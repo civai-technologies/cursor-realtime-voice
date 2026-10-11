@@ -99,9 +99,121 @@ code {
   min-height: 64px;
 }
 
-.top-menu-btn {
+.top-actions {
   margin-left: auto;
   flex: none;
+  position: relative;
+}
+
+.top-menu {
+  position: relative;
+}
+
+.top-menu > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.top-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.top-menu-btn {
+  flex: none;
+}
+
+.top-menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  min-width: 11.5rem;
+  padding: 6px;
+  background: var(--panel);
+  border: 2px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow-hard);
+  z-index: 50;
+}
+
+.top-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.9rem;
+  text-align: left;
+  color: var(--ink);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.top-menu-item:hover,
+.top-menu-item:focus-visible {
+  background: color-mix(in srgb, var(--gold) 22%, var(--panel));
+}
+
+.modal-card--capabilities {
+  max-height: min(78vh, 640px);
+  overflow: auto;
+}
+
+.capabilities-intro {
+  margin: 0 0 14px;
+  font-size: 0.92rem;
+  line-height: 1.45;
+  color: color-mix(in srgb, var(--ink) 88%, transparent);
+}
+
+.capabilities-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.capabilities-item {
+  padding: 12px 14px;
+  border: 2px solid var(--line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg) 40%, var(--panel));
+}
+
+.capabilities-item-title {
+  margin: 0 0 6px;
+  font-size: 0.95rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.capabilities-item-desc {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.capabilities-examples {
+  margin: 8px 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--ink) 75%, transparent);
+}
+
+.capabilities-examples li {
+  margin-bottom: 4px;
+}
+
+.capabilities-footer {
+  margin-top: 14px;
+  margin-bottom: 0;
 }
 
 .key-pill {
@@ -175,14 +287,9 @@ code {
 .logo-mark {
   width: 40px;
   height: 40px;
-  border-radius: 9px;
-  display: grid;
-  place-items: center;
-  font-family: var(--display);
-  font-size: 15px;
-  color: var(--bg);
-  background: linear-gradient(135deg, var(--green) 0 50%, #fff 50% 100%);
-  box-shadow: 0 0 0 2px var(--gold) inset, var(--shadow-hard);
+  display: block;
+  border-radius: 10px;
+  box-shadow: var(--shadow-hard);
   flex: none;
 }
 
@@ -190,6 +297,8 @@ code {
   display: flex;
   flex-direction: column;
   line-height: 1.1;
+  min-width: 0;
+  flex: 1;
 }
 
 .logo-title {
@@ -199,10 +308,13 @@ code {
 }
 
 .logo-sub {
-  font-size: 0.65rem;
-  letter-spacing: 0.2em;
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: var(--on-gold);
   opacity: 0.85;
 }
@@ -392,6 +504,10 @@ code {
   transform: none;
 }
 
+.btn[hidden] {
+  display: none !important;
+}
+
 .voice-orb-wrap {
   display: flex;
   flex-direction: column;
@@ -577,6 +693,14 @@ code {
 /* Transcript */
 .transcript .sec-head {
   margin-bottom: 10px;
+}
+
+#copyTranscriptBtn {
+  display: none;
+}
+
+.transcript:has(#captions:not(:empty)) #copyTranscriptBtn {
+  display: inline-flex;
 }
 
 .captions {

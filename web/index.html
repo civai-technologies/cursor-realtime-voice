@@ -5,11 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta
       name="description"
-      content="Cursor Voice: speak to control your Cursor Agent chat. Runs locally on your machine."
+      content="Realtime Voice for Cursor IDE: speak to control Agent. Runs locally on your machine."
     />
     <meta name="theme-color" content="#ffc414" />
     <meta name="color-scheme" content="light" />
-    <title>Cursor Voice · Talk to your Agent</title>
+    <title>Realtime Voice for Cursor IDE</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -22,21 +22,25 @@
   <body class="page">
     <header class="top" role="banner">
       <div class="wrap top-inner">
-        <div class="logo-mark" aria-hidden="true">CV</div>
+        <img class="logo-mark" src="/logo-mark.svg" width="40" height="40" alt="" />
         <div class="logo-copy">
           <span class="logo-title">Cursor Voice</span>
-          <span class="logo-sub">Talk to your Agent</span>
+          <span class="logo-sub">Realtime for Cursor IDE</span>
         </div>
-        <button
-          type="button"
-          class="btn line sm top-menu-btn"
-          id="openSettingsBtn"
-          aria-haspopup="dialog"
-          aria-controls="settingsModal"
-        >
-          Settings
-          <span class="key-pill" id="keyPill" hidden aria-hidden="true">Key</span>
-        </button>
+        <div class="top-actions">
+          <details class="top-menu" id="headerMenu">
+            <summary class="btn line sm top-menu-btn" aria-label="Open menu">Menu</summary>
+            <div class="top-menu-panel" role="menu" aria-label="Page menu">
+              <button type="button" class="top-menu-item" role="menuitem" id="openCapabilitiesBtn">
+                What I can do
+              </button>
+              <button type="button" class="top-menu-item" role="menuitem" id="openSettingsBtn">
+                Settings
+                <span class="key-pill" id="keyPill" hidden aria-hidden="true">Key</span>
+              </button>
+            </div>
+          </details>
+        </div>
       </div>
     </header>
 
@@ -69,10 +73,24 @@
       </div>
     </dialog>
 
+    <dialog id="capabilitiesModal" class="modal" aria-labelledby="capabilities-heading">
+      <div class="modal-card modal-card--capabilities">
+        <div class="modal-head">
+          <h2 id="capabilities-heading">What I can do</h2>
+          <button type="button" class="btn line sm" id="closeCapabilitiesBtn" aria-label="Close capabilities">
+            Close
+          </button>
+        </div>
+        <p class="capabilities-intro" id="capabilitiesIntro"></p>
+        <ul class="capabilities-list" id="capabilitiesList"></ul>
+        <p class="fine-print capabilities-footer" id="capabilitiesFooter"></p>
+      </div>
+    </dialog>
+
     <main class="wrap main">
       <section class="intro card" aria-labelledby="intro-heading">
         <p class="eyebrow">Local · Loopback only</p>
-        <h1 id="intro-heading">Voice for Cursor Agent</h1>
+        <h1 id="intro-heading">Realtime Voice for Cursor IDE</h1>
         <p class="lede">
           Speak naturally. Your words become instructions in the open
           <strong>Cursor Agent</strong> panel. Agent replies show here when hooks are installed.
@@ -111,7 +129,13 @@
       <section class="transcript card" aria-labelledby="transcript-heading">
         <div class="sec-head compact transcript-head">
           <h2 id="transcript-heading">Live transcript</h2>
-          <button type="button" class="btn line sm" id="copyTranscriptBtn" aria-label="Copy transcript to clipboard">
+          <button
+            type="button"
+            class="btn line sm"
+            id="copyTranscriptBtn"
+            hidden
+            aria-label="Copy transcript to clipboard"
+          >
             Copy
           </button>
         </div>

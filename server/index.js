@@ -11,12 +11,38 @@ const { initBridgeToken, writeBridgeConfig, handleIdeBridge } = require('./ide-b
 const { getDiagnostics } = require('./diagnostics');
 const { getSettingsPublic, setOpenAiApiKey, getOpenAiKey } = require('./settings');
 
+const { spawnSync } = require('child_process');
+
 const repoRoot = path.join(__dirname, '..');
 require('dotenv').config({ path: path.join(repoRoot, '.env') });
 
 const HOST = process.env.CURSOR_VOICE_HOST || '127.0.0.1';
 const PORT = parseInt(process.env.CURSOR_VOICE_TOKEN_PORT || '8787', 10);
 const STATIC_DIR = path.join(repoRoot, 'web', 'dist');
+
+function ensureWebDist() {
+  if (process.env.CURSOR_VOICE_SKIP_WEB_BUILD === '1') {
+    return;
+  }
+  const webDir = path.join(repoRoot, 'web');
+  const pkg = path.join(webDir, 'package.json');
+  if (!fs.existsSync(pkg)) {
+    console.warn('[cursor-voice] web/ missing; cannot build UI.');
+    return;
+  }
+  console.log('[cursor-voice] Building web UI (serves from web/dist)…');
+  const result = spawnSync('npm', ['run', 'build', '--prefix', webDir], {
+    cwd: repoRoot,
+    stdio: 'inherit',
+    env: process.env,
+    shell: process.platform === 'win32',
+  });
+  if (result.status !== 0) {
+    console.warn('[cursor-voice] Web build failed; using existing web/dist if any.');
+  }
+}
+
+ensureWebDist();
 
 initBridgeToken();
 
@@ -65,10 +91,12 @@ function serveStatic(req, res, urlPath) {
     '.svg': 'image/svg+xml',
   };
   const headers = { 'Content-Type': types[ext] || 'application/octet-stream' };
-  if (ext === '.html') {
+  if (ext === '.html' || ext === '.svg') {
     headers['Cache-Control'] = 'no-cache';
   } else if (urlPath.includes('/assets/')) {
     headers['Cache-Control'] = 'public, max-age=31536000, immutable';
+  } else if (ext === '.css' || ext === '.js') {
+    headers['Cache-Control'] = 'no-cache';
   }
   res.writeHead(200, headers);
   fs.createReadStream(filePath).pipe(res);

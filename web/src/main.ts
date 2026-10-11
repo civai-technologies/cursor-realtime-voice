@@ -1,5 +1,10 @@
 import { loadBridgeConfig } from "./bridge-client";
 import { CursorVoiceSession, type CaptionLine, type MicUiState } from "./cursor-voice-session";
+import {
+  VOICE_CAPABILITIES,
+  VOICE_CAPABILITIES_FOOTER,
+  VOICE_CAPABILITIES_INTRO,
+} from "./voice-capabilities";
 
 const statusBarEl = document.querySelector(".status-bar") as HTMLElement;
 const statusEl = document.getElementById("status")!;
@@ -14,8 +19,15 @@ const keyHintEl = document.getElementById("keyHint")!;
 const apiKeyInput = document.getElementById("apiKeyInput") as HTMLInputElement;
 const saveKeyBtn = document.getElementById("saveKeyBtn") as HTMLButtonElement;
 const settingsModal = document.getElementById("settingsModal") as HTMLDialogElement;
+const capabilitiesModal = document.getElementById("capabilitiesModal") as HTMLDialogElement;
 const openSettingsBtn = document.getElementById("openSettingsBtn") as HTMLButtonElement;
+const openCapabilitiesBtn = document.getElementById("openCapabilitiesBtn") as HTMLButtonElement;
 const closeSettingsBtn = document.getElementById("closeSettingsBtn") as HTMLButtonElement;
+const closeCapabilitiesBtn = document.getElementById("closeCapabilitiesBtn") as HTMLButtonElement;
+const headerMenu = document.getElementById("headerMenu") as HTMLDetailsElement;
+const capabilitiesListEl = document.getElementById("capabilitiesList")!;
+const capabilitiesIntroEl = document.getElementById("capabilitiesIntro")!;
+const capabilitiesFooterEl = document.getElementById("capabilitiesFooter")!;
 const keyPillEl = document.getElementById("keyPill") as HTMLElement;
 
 const LONG_PRESS_MS = 700;
@@ -41,6 +53,8 @@ let longPressTriggered = false;
 
 function renderCaptions(lines: CaptionLine[]): void {
   transcriptLines = lines;
+  const hasContent = lines.length > 0;
+  copyTranscriptBtn.hidden = !hasContent;
   captionsEl.innerHTML = lines
     .map((l) => {
       if (l.role === "tool" && l.toolName) {
@@ -197,6 +211,7 @@ async function refreshDiagnosticsBanner(): Promise<void> {
       thread_count?: number;
       transport?: string;
       openai_api_key_set?: boolean;
+      status_user_message?: string | null;
       fix_steps?: string[];
     };
     if (d.openai_api_key_set === false) {
@@ -208,7 +223,8 @@ async function refreshDiagnosticsBanner(): Promise<void> {
       setStatus(`Ready (${via}): ${d.thread_count ?? 0} Agent thread(s). Tap the voice button.`);
       return;
     }
-    const step = d.fix_steps?.[0] || "Install Cursor Voice Bridge extension in Cursor.";
+    const step =
+      d.status_user_message || d.fix_steps?.[0] || "Install Cursor Voice Bridge extension in Cursor.";
     setStatus(`Not ready: ${step}`);
   } catch {
     setStatus("Cannot reach cursor-voice server. Run ./setup.sh or npm start.");
@@ -226,17 +242,78 @@ function closeSettingsModal(): void {
   }
 }
 
-openSettingsBtn.addEventListener("click", () => openSettingsModal());
+function closeHeaderMenu(): void {
+  headerMenu.open = false;
+}
+
+function renderCapabilitiesList(): void {
+  capabilitiesIntroEl.textContent = VOICE_CAPABILITIES_INTRO;
+  capabilitiesFooterEl.textContent = VOICE_CAPABILITIES_FOOTER;
+  capabilitiesListEl.innerHTML = VOICE_CAPABILITIES
+    .map((cap) => {
+      const examples =
+        cap.examples && cap.examples.length > 0
+          ? `<ul class="capabilities-examples">${cap.examples
+              .map((ex) => `<li>${escapeHtml(ex)}</li>`)
+              .join("")}</ul>`
+          : "";
+      return `<li class="capabilities-item">
+        <h3 class="capabilities-item-title">${escapeHtml(cap.title)}</h3>
+        <p class="capabilities-item-desc">${escapeHtml(cap.description)}</p>
+        ${examples}
+      </li>`;
+    })
+    .join("");
+}
+
+function openCapabilitiesModal(): void {
+  closeHeaderMenu();
+  capabilitiesModal.showModal();
+}
+
+function closeCapabilitiesModal(): void {
+  if (capabilitiesModal.open) {
+    capabilitiesModal.close();
+  }
+}
+
+openSettingsBtn.addEventListener("click", () => {
+  closeHeaderMenu();
+  openSettingsModal();
+});
+openCapabilitiesBtn.addEventListener("click", () => openCapabilitiesModal());
 closeSettingsBtn.addEventListener("click", () => closeSettingsModal());
+closeCapabilitiesBtn.addEventListener("click", () => closeCapabilitiesModal());
 settingsModal.addEventListener("click", (e) => {
   if (e.target === settingsModal) {
     closeSettingsModal();
+  }
+});
+capabilitiesModal.addEventListener("click", (e) => {
+  if (e.target === capabilitiesModal) {
+    closeCapabilitiesModal();
   }
 });
 settingsModal.addEventListener("cancel", (e) => {
   e.preventDefault();
   closeSettingsModal();
 });
+capabilitiesModal.addEventListener("cancel", (e) => {
+  e.preventDefault();
+  closeCapabilitiesModal();
+});
+
+document.addEventListener("click", (e) => {
+  if (!headerMenu.open) {
+    return;
+  }
+  const target = e.target as Node;
+  if (!headerMenu.contains(target)) {
+    closeHeaderMenu();
+  }
+});
+
+renderCapabilitiesList();
 
 async function startVoiceSession(): Promise<void> {
   if (!openaiKeySet) {
@@ -351,6 +428,8 @@ copyTranscriptBtn.addEventListener("click", () => {
     }
   })();
 });
+
+copyTranscriptBtn.hidden = true;
 
 void loadSettings();
 void refreshDiagnosticsBanner();

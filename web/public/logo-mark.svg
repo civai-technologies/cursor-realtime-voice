@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" fill="none" role="img" aria-label="Realtime Voice">
+  <rect x="1" y="1" width="38" height="38" rx="10" fill="#ffffff" stroke="#141414" stroke-width="2"/>
+  <rect x="15" y="9" width="10" height="15" rx="5" fill="#141414"/>
+  <path
+    d="M11 19a9 9 0 0 0 18 0"
+    stroke="#141414"
+    stroke-width="2"
+    stroke-linecap="round"
+  />
+  <path d="M20 28v4" stroke="#141414" stroke-width="2" stroke-linecap="round"/>
+  <path d="M15 32h10" stroke="#141414" stroke-width="2" stroke-linecap="round"/>
+  <path
+    d="M27 15c2.5 1.8 2.5 8.2 0 10"
+    stroke="#00994d"
+    stroke-width="2.5"
+    stroke-linecap="round"
+  />
+  <path
+    d="M30.5 12c4 2.8 4 13.2 0 16"
+    stroke="#00994d"
+    stroke-width="2"
+    stroke-linecap="round"
+    opacity="0.75"
+  />
+  <circle cx="30" cy="11" r="2.5" fill="#00994d"/>
+</svg>

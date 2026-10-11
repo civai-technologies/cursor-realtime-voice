@@ -2,29 +2,42 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=lib/platform.sh
+source "${REPO_ROOT}/scripts/lib/platform.sh"
+platform_detect
+
 HOOKS_SRC="${REPO_ROOT}/hooks/emit_event.py"
 USER_HOOKS_DIR="${HOME}/.cursor/hooks"
 USER_HOOKS_JSON="${HOME}/.cursor/hooks.json"
 DEST="${USER_HOOKS_DIR}/cursor-voice-emit_event.py"
 
+PYTHON_BIN=""
+if ! PYTHON_BIN="$(platform_find_python)"; then
+  echo "Python 3 is required for hooks. Install python3 and re-run." >&2
+  exit 1
+fi
+
 mkdir -p "${USER_HOOKS_DIR}"
-chmod +x "${HOOKS_SRC}"
+chmod +x "${HOOKS_SRC}" 2>/dev/null || true
 cp "${HOOKS_SRC}" "${DEST}"
+chmod +x "${DEST}" 2>/dev/null || true
 
 export CURSOR_VOICE_HOOK_DEST="${DEST}"
 export CURSOR_VOICE_HOOKS_JSON="${USER_HOOKS_JSON}"
+export CURSOR_VOICE_PYTHON="${PYTHON_BIN}"
 
-python3 <<'PY'
+"${PYTHON_BIN}" <<'PY'
 import json
 import os
 from pathlib import Path
 
 dest = Path(os.environ["CURSOR_VOICE_HOOK_DEST"])
 hooks_json = Path(os.environ["CURSOR_VOICE_HOOKS_JSON"])
+python = os.environ["CURSOR_VOICE_PYTHON"]
 
 events = ["sessionStart", "sessionEnd", "postToolUse", "stop", "afterAgentResponse"]
 entries_for = {
-    ev: [{"command": f'python3 "{dest}" {ev}'}] for ev in events
+    ev: [{"command": f'"{python}" "{dest}" {ev}'}] for ev in events
 }
 
 if hooks_json.is_file():
@@ -48,4 +61,4 @@ hooks_json.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 print(f"Updated {hooks_json}")
 PY
 
-echo "Hooks installed. Restart Cursor if hooks.json was new."
+echo "Hooks installed (${PLATFORM_NAME}). Restart Cursor if hooks.json was new."

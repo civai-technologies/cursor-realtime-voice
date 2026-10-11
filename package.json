@@ -25,7 +25,7 @@
   },
   "scripts": {
     "postinstall": "npm install --prefix server && npm install --prefix extension && npm install --prefix web",
-    "start": "npm run compile --prefix extension && npm run build --prefix web && npm run start --prefix server",
+    "start": "npm run compile --prefix extension && npm run start --prefix server",
     "build": "npm run compile --prefix extension && npm run build --prefix web",
     "test:realtime": "npm test --prefix server"
   }

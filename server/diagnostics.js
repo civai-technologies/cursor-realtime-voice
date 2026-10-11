@@ -27,10 +27,14 @@ async function getDiagnostics() {
     );
   } else if (!extension_ok) {
     steps.push(
-      `Extension config exists (${EXT_CONFIG_PATH}, port ${probe.port}) but nothing is listening — stale bridge after crash or extension host not loaded.`
+      'The voice link inside Cursor is offline (often after Reload Window or a crash). Restart it from Cursor — see steps below.'
     );
-    steps.push('Cmd+Shift+P → “Cursor Voice: Reload extension”, then “Cursor Voice: Restart Bridge” (modal should show a new port).');
-    steps.push('Cmd+Shift+P → “Cursor Voice: Test Send to Agent” to confirm text appears in Agent chat (not a test dialog).');
+    steps.push(
+      'Command Palette (Cmd+Shift+P on Mac, Ctrl+Shift+P on Windows/Linux) → “Cursor Voice: Reload extension”, then “Cursor Voice: Restart Bridge”.'
+    );
+    steps.push(
+      'Optional check: “Cursor Voice: Send test line to Agent chat” — a new message should appear in Agent, not a popup at the top.'
+    );
   } else {
     steps.push('Extension bridge is live — voice sends instructions through in-IDE Composer commands.');
   }
@@ -38,8 +42,13 @@ async function getDiagnostics() {
     steps.push('Run npm start and open http://127.0.0.1:8787');
   }
 
+  const status_user_message = ready
+    ? null
+    : steps[0] || 'Voice is not ready yet. Follow the steps in Menu or reload the Cursor extension.';
+
   return {
     ready,
+    status_user_message,
     threads,
     thread_count: threads.length,
     transport,

@@ -2,14 +2,17 @@
 # Restart cursor-voice on 127.0.0.1:8787 and poke the Cursor extension HTTP bridge.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-PORT=8787
+# shellcheck source=lib/platform.sh
+source "${ROOT}/scripts/lib/platform.sh"
+platform_detect
 
-if lsof -Pi :"${PORT}" -sTCP:LISTEN -t >/dev/null 2>&1; then
-  lsof -ti:"${PORT}" | xargs kill -9
-  sleep 1
-fi
+PORT="${CURSOR_VOICE_TOKEN_PORT:-8787}"
+
+platform_kill_port "${PORT}"
+sleep 1
 
 cd "${ROOT}/server"
+# index.js rebuilds web/dist on start unless CURSOR_VOICE_SKIP_WEB_BUILD=1
 node index.js >>"${ROOT}/.cursor-voice-server.log" 2>&1 &
 SERVER_PID=$!
 disown "${SERVER_PID}" 2>/dev/null || true

@@ -10,7 +10,16 @@ Everything runs on **your machine** (loopback `127.0.0.1` only). Your OpenAI API
 
 ## Quick start
 
-**Requirements:** macOS (tested) or Linux, [Node.js](https://nodejs.org/) 18+, [Cursor](https://cursor.com/) with an Agent (Composer) chat open, OpenAI API key with Realtime access.
+**Requirements:** [Node.js](https://nodejs.org/) 18+, [Cursor](https://cursor.com/) with an Agent (Composer) chat open, OpenAI API key with Realtime access. Works on **macOS**, **Linux**, and **Windows** (see platform notes below).
+
+### Install (detects your OS)
+
+| Platform | Command |
+|----------|---------|
+| **macOS / Linux / Git Bash on Windows** | `chmod +x setup.sh && ./setup.sh` |
+| **Windows (PowerShell)** | `.\setup.ps1` |
+
+`setup.sh` detects Darwin, Linux, or Windows (MSYS/Git Bash), finds the Cursor CLI when possible, installs the VSIX or prints manual steps, installs hooks with `python3` or `python`, frees the voice port the right way for your OS, and opens the browser.
 
 ### macOS: allow Cursor to send Agent messages
 
@@ -19,7 +28,7 @@ On most accounts Cursor’s in-IDE **desktop bridge** experiment is off, so the 
 1. Open **System Settings** → **Privacy & Security** → **Accessibility**
 2. Turn **ON** for **Cursor** (unlock with your password if prompted)
 3. **Quit and reopen Cursor** if the toggle was off before (macOS sometimes needs a restart)
-4. In Cursor: **⌘⇧P** → **Developer: Reload Window**
+4. In Cursor: **Cmd+Shift+P** (macOS) or **Ctrl+Shift+P** (Linux/Windows) → **Developer: Reload Window**
 
 Before voice or **Test Send**, click the **Agent chat you want** and focus the **message box** at the bottom. Voice does not switch Agent tabs for you.
 
@@ -38,7 +47,13 @@ Then in the browser (opened automatically at **http://127.0.0.1:8787**):
 2. **Start voice**
 3. Say e.g. “Tell the agent to run the tests and summarize the result.”
 
-**First-time Cursor setup:** press **⌘⇧P** (Command Palette) → run **Cursor Voice: Restart Bridge** if diagnostics say the extension is not ready.
+### Linux and Windows
+
+- **Agent send** uses Cursor's in-IDE `composer.desktopBridge.sendMessage` when enabled. If it is off, macOS falls back to Accessibility paste+Return; on Linux/Windows use `scripts/enable-desktop-bridge.py` (with Cursor quit) or install the extension from the VSIX `setup` produces.
+- **Hooks** need Python 3 on your `PATH` (`python3` or `python`).
+- **Extension folder copy:** `./scripts/sync-extension-to-cursor.sh` works on all platforms and picks `~/.cursor/extensions` (or `%USERPROFILE%\.cursor\extensions` on Windows).
+
+**First-time Cursor setup:** Command Palette (**Cmd+Shift+P** / **Ctrl+Shift+P**) → **Cursor Voice: Restart Bridge** if diagnostics say the extension is not ready.
 
 ---
 
@@ -101,6 +116,29 @@ Config files (local only):
 
 ---
 
+## Updating the extension (after `git pull`)
+
+The voice page talks to a **Cursor extension** on your machine. Code updates do not apply until you reinstall that extension and reload Cursor.
+
+**Recommended (all platforms):**
+
+```bash
+git pull
+./scripts/sync-extension-to-cursor.sh
+```
+
+Then in Cursor (**Cmd+Shift+P** / **Ctrl+Shift+P**):
+
+1. **Cursor Voice: Reload extension**
+2. **Cursor Voice: Restart Bridge**
+3. Optional: **Cursor Voice: Send test line to Agent chat**
+
+Hard-refresh `http://127.0.0.1:8787`. If you changed server or web code too, run `npm run start --prefix server` (or `./scripts/restart-voice-server.sh`).
+
+Full detail (VSIX, hooks, releases): **[docs/EXTENSION_UPDATE_AND_DEPLOY.md](docs/EXTENSION_UPDATE_AND_DEPLOY.md)**.
+
+---
+
 ## Install without `setup.sh`
 
 ```bash
@@ -109,11 +147,11 @@ npm start
 # → http://127.0.0.1:8787
 
 ./scripts/install-hooks.sh          # agent replies + completion
-./scripts/install-extension-dev.sh  # or:
-./scripts/sync-extension-to-cursor.sh  # build + copy to ~/.cursor/extensions (recommended on macOS)
+./scripts/install-extension-dev.sh  # print manual install steps
+./scripts/sync-extension-to-cursor.sh  # build + copy to ~/.cursor/extensions (recommended)
 ```
 
-After installing or pulling extension changes: **⌘⇧P** → **Developer: Reload Window**.
+After installing or pulling extension changes: **Reload extension** → **Restart Bridge** (see doc above).
 
 Restart server only:
 
@@ -180,7 +218,8 @@ Extension commands (**⌘⇧P**):
 
 ## Contributing & release
 
-See [docs/PUBLIC_RELEASE_REPORT.md](docs/PUBLIC_RELEASE_REPORT.md) for the open-source readiness checklist.
+- **Extension update / deploy (users and maintainers):** [docs/EXTENSION_UPDATE_AND_DEPLOY.md](docs/EXTENSION_UPDATE_AND_DEPLOY.md)
+- **Open-source readiness checklist:** [docs/PUBLIC_RELEASE_REPORT.md](docs/PUBLIC_RELEASE_REPORT.md)
 
 Issues and PRs welcome on GitHub.
 

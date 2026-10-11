@@ -34,7 +34,8 @@ Cursor Voice is ready for public GitHub release as a self-hosted voice front-end
 
 ## Known limitations
 
-- macOS-first `setup.sh` (Linux: manual VSIX + `npm start`).
+- Cross-platform `setup.sh` (macOS/Linux/Git Bash) and `setup.ps1` (Windows PowerShell); shared `scripts/lib/platform.sh`.
+- Extension update path documented in `docs/EXTENSION_UPDATE_AND_DEPLOY.md` (`sync-extension-to-cursor.sh`, Reload extension, Restart Bridge, maintainer version bump).
 - Voice sees agent output via hooks, not full Composer scrollback.
 - Browser MCP tool noise filtered from hook stream.
 - Requires OpenAI Realtime-capable API access.

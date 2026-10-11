@@ -93,9 +93,11 @@ export async function submitAgentMessage(text: string, threadId: string): Promis
     return submitViaMacAccessibility(trimmed);
   }
 
-  throw new Error(
-    "Agent send is blocked (Cursor desktop_bridge experiment is off). " +
-      "On macOS, enable Accessibility for Cursor and retry, or Cmd+Q Cursor and run " +
-      "python3 scripts/enable-desktop-bridge.py from the cursor-voice repo, then reopen."
-  );
+  const platformHint =
+    process.platform === "win32"
+      ? "On Windows, install the extension from setup (VSIX) and ensure Cursor's desktop bridge is enabled when available."
+      : process.platform === "linux"
+        ? "On Linux, enable Cursor's desktop bridge experiment or run python3 scripts/enable-desktop-bridge.py from the repo, then restart Cursor."
+        : "On macOS, enable Accessibility for Cursor in System Settings, or run python3 scripts/enable-desktop-bridge.py from the repo and restart Cursor.";
+  throw new Error(`Agent send is blocked (Cursor desktop_bridge experiment is off). ${platformHint}`);
 }

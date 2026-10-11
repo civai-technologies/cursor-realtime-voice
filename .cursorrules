@@ -12,6 +12,7 @@ Voice control of Cursor IDE Agent: OpenAI Realtime (local .env) + **extension Co
 - [x] Phase 2: Local server `server/` — OpenAI `client_secrets`
 - [x] Phase 3: Web WebRTC client
 - [x] Phase 4: README, `.env.example`, `npm start`
+- [x] Multi-platform setup: `scripts/lib/platform.sh`, OS-aware `setup.sh`, `setup.ps1`, hooks/sync/restart scripts
 
 ## Guardrails
 
