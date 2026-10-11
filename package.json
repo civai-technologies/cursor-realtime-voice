@@ -6,10 +6,10 @@
   "author": "CIVAI Technologies",
   "repository": {
     "type": "git",
-    "url": "https://github.com/civai-technologies/cursor-voice.git"
+    "url": "https://github.com/civai-technologies/cursor-realtime-voice.git"
   },
   "bugs": {
-    "url": "https://github.com/civai-technologies/cursor-voice/issues"
+    "url": "https://github.com/civai-technologies/cursor-realtime-voice/issues"
   },
   "homepage": "https://civai.co",
   "keywords": [

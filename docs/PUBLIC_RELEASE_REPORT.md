@@ -3,7 +3,7 @@
 **Date:** 2026-10-11  
 **Version:** 0.1.0  
 **License:** MIT (CIVAI Technologies)  
-**Target repo:** https://github.com/civai-technologies/cursor-voice
+**Target repo:** https://github.com/civai-technologies/cursor-realtime-voice
 
 ## Summary
 
@@ -41,7 +41,7 @@ Cursor Voice is ready for public GitHub release as a self-hosted voice front-end
 
 ## Post-publish
 
-- [x] Public repo: https://github.com/civai-technologies/cursor-voice (`main` @ initial release commit)
+- [x] Public repo: https://github.com/civai-technologies/cursor-realtime-voice (`main` @ initial release commit)
 - [ ] Tag `v0.1.0` (optional)
 - [ ] Enable GitHub Discussions or Issues template (optional)
 - [ ] Announce with demo GIF (optional)

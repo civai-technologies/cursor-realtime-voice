@@ -6,7 +6,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/civai-technologies/cursor-voice.git"
+    "url": "https://github.com/civai-technologies/cursor-realtime-voice.git"
   },
   "publisher": "civai",
   "engines": {

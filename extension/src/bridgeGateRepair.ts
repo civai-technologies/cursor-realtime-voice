@@ -8,7 +8,7 @@ const execFileAsync = promisify(execFile);
 function resolveEnableScriptPath(): string | null {
   const candidates = [
     process.env.CURSOR_VOICE_ENABLE_BRIDGE_SCRIPT,
-    path.join(process.env.HOME ?? "", "Documents/civai/cursor-voice/scripts/enable-desktop-bridge.py"),
+    path.join(process.env.HOME ?? "", "Documents/civai/cursor-realtime-voice/scripts/enable-desktop-bridge.py"),
   ].filter((p): p is string => typeof p === "string" && p.length > 0);
   for (const p of candidates) {
     if (fs.existsSync(p)) {

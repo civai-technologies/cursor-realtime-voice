@@ -26,8 +26,8 @@ Before voice or **Test Send**, click the **Agent chat you want** and focus the *
 If submit fails with **error 1002** or “blocked simulated keys”, repeat the steps above or use **⌘⇧P** → **Cursor Voice: Send test line to Agent chat** → **Open Accessibility Settings**.
 
 ```bash
-git clone https://github.com/civai-technologies/cursor-voice.git
-cd cursor-voice
+git clone https://github.com/civai-technologies/cursor-realtime-voice.git
+cd cursor-realtime-voice
 chmod +x setup.sh
 ./setup.sh
 ```

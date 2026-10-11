@@ -12,9 +12,11 @@ function voiceRepoRoot(): string | null {
   if (fromEnv && fs.existsSync(path.join(fromEnv, "server", "index.js"))) {
     return fromEnv;
   }
-  const homeDefault = path.join(os.homedir(), "Documents/civai/cursor-voice");
-  if (fs.existsSync(path.join(homeDefault, "server", "index.js"))) {
-    return homeDefault;
+  for (const dir of ["cursor-realtime-voice", "cursor-voice"]) {
+    const candidate = path.join(os.homedir(), "Documents/civai", dir);
+    if (fs.existsSync(path.join(candidate, "server", "index.js"))) {
+      return candidate;
+    }
   }
   return null;
 }
@@ -55,7 +57,7 @@ export class VoiceServerManager {
       return {
         ok: false,
         message:
-          "Cursor Voice repo not found. Set CURSOR_VOICE_ROOT to your cursor-voice clone, or clone to ~/Documents/civai/cursor-voice.",
+          "Cursor Voice repo not found. Set CURSOR_VOICE_ROOT to your clone, or clone to ~/Documents/civai/cursor-realtime-voice.",
       };
     }
 
