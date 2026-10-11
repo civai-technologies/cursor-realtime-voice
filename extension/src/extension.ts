@@ -1,3 +1,4 @@
+import * as http from "http";
 import * as vscode from "vscode";
 import { BridgeServer } from "./bridgeServer";
 import { BridgeState } from "./bridgeState";
@@ -5,6 +6,24 @@ import { submitComposerInstruction } from "./composerInstruct";
 
 const state = new BridgeState();
 let bridge: BridgeServer | null = null;
+
+async function verifyBridgeHealth(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const req = http.request(
+      { hostname: "127.0.0.1", port, path: "/v1/health", method: "GET", timeout: 3000 },
+      (res) => {
+        res.resume();
+        resolve(res.statusCode === 200);
+      }
+    );
+    req.on("error", () => resolve(false));
+    req.on("timeout", () => {
+      req.destroy();
+      resolve(false);
+    });
+    req.end();
+  });
+}
 
 async function ensureBridge(): Promise<BridgeServer> {
   if (!bridge) {
@@ -55,12 +74,27 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   context.subscriptions.push(
     vscode.commands.registerCommand("cursorVoiceBridge.restart", async () => {
-      if (bridge) {
-        await bridge.stop();
+      try {
+        if (bridge) {
+          await bridge.stop();
+        }
+        bridge = new BridgeServer(state);
+        const cfg = await bridge.start();
+        const ok = await verifyBridgeHealth(cfg.port);
+        if (!ok) {
+          void vscode.window.showErrorMessage(
+            `Cursor Voice: bridge wrote port ${cfg.port} but health check failed. Try “Cursor Voice: Reload extension”.`
+          );
+          return;
+        }
+        void vscode.window.showInformationMessage(
+          `Cursor Voice bridge is live on 127.0.0.1:${cfg.port} (config updated).`,
+          { modal: true }
+        );
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        void vscode.window.showErrorMessage(`Cursor Voice restart failed: ${msg}`);
       }
-      bridge = new BridgeServer(state);
-      const cfg = await bridge.start();
-      void vscode.window.showInformationMessage(`Cursor Voice bridge restarted on port ${cfg.port}`);
     })
   );
 

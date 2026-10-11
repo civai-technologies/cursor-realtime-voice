@@ -167,15 +167,26 @@ async function getStatusPayload() {
       };
     }
     if (transport === 'extension-offline') {
+      let threads = [];
+      let desktopFallback = false;
+      try {
+        threads = await listDesktopThreads();
+        desktopFallback = threads.length > 0;
+      } catch {
+        threads = [];
+      }
       return {
         running: state.running,
         composer_id: state.lastThreadId,
         thread_title: state.lastThreadTitle,
         last_event_at: state.lastEventAt,
-        threads: [],
-        transport: 'extension-composer',
+        threads,
+        transport: desktopFallback ? 'desktop-cli-fallback' : 'extension-composer',
         extension_reachable: false,
-        hint: 'Cursor Voice extension config exists but HTTP bridge is down — reload the Cursor window.',
+        extension_config_stale: true,
+        hint: desktopFallback
+          ? 'Extension HTTP server is not running (stale port in ~/.cursor/cursor-voice-extension.json). Voice can still send via desktop bridge. Fix: Cmd+Shift+P → Cursor Voice: Reload extension.'
+          : 'Extension HTTP server is not running. Cmd+Shift+P → Cursor Voice: Reload extension, or open Agent and run ./setup.sh.',
         agent_activity: agentActivityPayload(),
       };
     }
@@ -319,54 +330,31 @@ async function handleIdeBridge(req, res, url, sendJson, readBody) {
         sendJson(res, 400, { error: 'text required' });
         return true;
       }
-      const transport = await resolveTransport();
+      let transport = await resolveTransport();
       if (transport === 'extension-offline') {
-        const recovered = await extensionRestartBridge();
-        if (!recovered) {
-          sendJson(res, 503, {
-            error: 'extension_bridge_unreachable',
-            hint:
-              'In Cursor press Cmd+Shift+P → “Cursor Voice: Restart Bridge”. Voice does not use the desktop CLI when the extension is installed.',
-          });
-          return true;
-        }
+        await extensionRestartBridge();
+        transport = await resolveTransport();
       }
-      const transportAfterRecovery = await resolveTransport();
-      if (transportAfterRecovery === 'extension-offline') {
-        sendJson(res, 503, {
-          error: 'extension_bridge_unreachable',
-          hint: 'In Cursor press Cmd+Shift+P → “Cursor Voice: Restart Bridge”.',
-        });
-        return true;
-      }
-      if (transportAfterRecovery === 'extension') {
+      if (transport === 'extension') {
         const result = await extensionInstruct({
           text,
           thread_id: body.thread_id,
           policy: body.policy,
         });
-        if (result) {
-          if (result.status >= 200 && result.status < 300) {
-            state.running = true;
-            if (result.body.thread_id) {
-              state.lastThreadId = result.body.thread_id;
-            }
-            pushEvent({
-              event_id: crypto.randomUUID(),
-              ts: new Date().toISOString(),
-              kind: 'instruct_sent',
-              composer_id: result.body.thread_id || state.lastThreadId,
-              summary: `Instruction sent (${result.body.method || 'extension'})`,
-            });
+        if (result && result.status >= 200 && result.status < 300) {
+          if (result.body.thread_id) {
+            state.lastThreadId = result.body.thread_id;
           }
+          pushEvent({
+            event_id: crypto.randomUUID(),
+            ts: new Date().toISOString(),
+            kind: 'instruct_sent',
+            composer_id: result.body.thread_id || state.lastThreadId,
+            summary: `Instruction sent (${result.body.method || 'extension'})`,
+          });
           sendJson(res, result.status, result.body);
           return true;
         }
-        sendJson(res, 503, {
-          error: 'extension_bridge_unreachable',
-          hint: 'In Cursor press Cmd+Shift+P → “Cursor Voice: Restart Bridge”, then try again.',
-        });
-        return true;
       }
       const force = body.policy === 'abort_then_send';
       const picked = await pickThread(body.thread_id);
@@ -380,15 +368,23 @@ async function handleIdeBridge(req, res, url, sendJson, readBody) {
       const desktop = await sendDesktopMessage(picked.threadId, text, { force });
       state.lastThreadId = picked.threadId;
       state.lastThreadTitle = picked.thread?.title || desktop.threadTitle;
-      state.running = true;
+      const usedFallback = extensionConfigured() && transport === 'extension-offline';
       pushEvent({
         event_id: crypto.randomUUID(),
         ts: new Date().toISOString(),
-        kind: 'assistant_chunk',
+        kind: 'instruct_sent',
         composer_id: picked.threadId,
-        summary: `Instruction sent: ${state.lastThreadTitle || picked.threadId}`,
+        summary: `Instruction sent (${usedFallback ? 'desktop-cli-fallback' : 'desktop-cli'})`,
       });
-      sendJson(res, 200, { submitted: true, thread_id: picked.threadId, desktop, transport: 'desktop-cli' });
+      sendJson(res, 200, {
+        submitted: true,
+        thread_id: picked.threadId,
+        desktop,
+        transport: usedFallback ? 'desktop-cli-fallback' : 'desktop-cli',
+        warning: usedFallback
+          ? 'Extension HTTP bridge was down; message sent via desktop bridge. Reload extension: Cmd+Shift+P → Cursor Voice: Reload extension.'
+          : undefined,
+      });
       return true;
     }
 
