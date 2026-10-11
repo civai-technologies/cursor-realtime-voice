@@ -1,10 +1,10 @@
 # Cursor Voice
 
-Talk to your **Cursor IDE Agent** with your voice. [OpenAI Realtime](https://platform.openai.com/docs/guides/realtime) handles speech in the browser; a small **Cursor extension** sends instructions into Composer; optional **hooks** stream agent replies back into voice.
+**Cursor Voice** by [CIVAI Technologies](https://civai.co) lets you talk to your **Cursor IDE Agent** instead of typing every instruction. [OpenAI Realtime](https://platform.openai.com/docs/guides/realtime) handles speech in the browser; a small **Cursor extension** sends instructions into Composer; optional **hooks** stream agent replies back into voice.
 
-Everything runs on **your machine** (loopback `127.0.0.1` only). Your OpenAI API key stays in local `.env` or the web UI—never sent to CivAI or any third party except OpenAI.
+Everything runs on **your machine** (loopback `127.0.0.1` only). Your OpenAI API key stays in local `.env` or the web UI. It is not sent to CIVAI or any third party except OpenAI.
 
-**License:** [MIT](LICENSE) · **Copyright:** CIVAI Technologies
+**License:** [MIT](LICENSE) · **Website:** [civai.co](https://civai.co)
 
 ---
 
@@ -57,7 +57,8 @@ Then in the browser (opened automatically at **http://127.0.0.1:8787**):
 │  agent: (hook) Latest agent reply preview                    │
 │  system: Agent finished its turn                             │
 ├──────────────────────────────────────────────────────────────┤
-│  [ Start voice ]  [ Stop agent run ]  [ End voice ]          │
+│  ( round voice button )  [ Copy transcript ]                 │
+│  Live transcript · Settings in header                        │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -182,3 +183,9 @@ Extension commands (**⌘⇧P**):
 See [docs/PUBLIC_RELEASE_REPORT.md](docs/PUBLIC_RELEASE_REPORT.md) for the open-source readiness checklist.
 
 Issues and PRs welcome on GitHub.
+
+---
+
+## Developer
+
+Maintained by **Kayode Femi Amoo** ([@usecodenaija on X](https://x.com/usecodenaija)) for CIVAI Technologies.

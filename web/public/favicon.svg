@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Cursor Voice">
+  <rect width="32" height="32" rx="8" fill="#141414"/>
+  <path fill="#ffc414" d="M8 22v-8l4-6h4l-4 6h3l5 8h-4l-3-5-3 5H8z"/>
+  <circle cx="22" cy="12" r="3" fill="#00994d"/>
+</svg>

@@ -77,13 +77,23 @@ function threadFocusMatches(focused: string | null, threadId: string): boolean {
   return focused === threadId;
 }
 
-export async function focusComposerThread(threadId?: string): Promise<string> {
-  const target = threadId && threadId !== "active-composer" ? threadId : (await getFocusedComposerId()) || threadId;
+export type FocusComposerResult = {
+  threadId: string;
+  verified: boolean;
+  warning?: string;
+};
+
+export async function focusComposerThread(
+  threadId?: string,
+  options?: { softVerify?: boolean }
+): Promise<FocusComposerResult> {
+  const target =
+    threadId && threadId !== "active-composer" ? threadId : (await getFocusedComposerId()) || threadId;
 
   if (target && target !== "active-composer") {
     const alreadyFocused = await getFocusedComposerId();
     if (threadFocusMatches(alreadyFocused, target)) {
-      return target;
+      return { threadId: target, verified: true };
     }
     const openAttempts: Array<{ cmd: string; args?: unknown }> = [
       { cmd: "composer.focusComposer", args: target },
@@ -93,10 +103,10 @@ export async function focusComposerThread(threadId?: string): Promise<string> {
     for (const { cmd, args } of openAttempts) {
       try {
         await runComposerCommand(cmd, args);
-        await delay(280);
+        await delay(420);
         const focused = await getFocusedComposerId();
         if (threadFocusMatches(focused, target)) {
-          return target;
+          return { threadId: target, verified: true };
         }
       } catch {
         // try next
@@ -104,14 +114,20 @@ export async function focusComposerThread(threadId?: string): Promise<string> {
     }
   }
 
-  await delay(120);
+  await delay(160);
   const focused = await getFocusedComposerId();
+  const resolved = focused || target || "active-composer";
   if (target && target !== "active-composer" && !threadFocusMatches(focused, target)) {
+    const warning =
+      "Could not verify focus — click that Agent chat on the right if the wrong tab is active.";
+    if (options?.softVerify) {
+      return { threadId: target, verified: false, warning };
+    }
     throw new Error(
       `Could not focus Agent thread ${target}. Click the Agent (Composer) panel on the right, then try again.`
     );
   }
-  return focused || target || "active-composer";
+  return { threadId: resolved, verified: true };
 }
 
 export async function focusComposer(): Promise<void> {
@@ -161,7 +177,8 @@ export async function submitComposerInstruction(
 
   let resolvedThread = targetId;
   if (!threadFocusMatches(focusedId, targetId)) {
-    resolvedThread = await focusComposerThread(targetId);
+    const focus = await focusComposerThread(targetId);
+    resolvedThread = focus.threadId;
   }
   if (resolvedThread === "active-composer") {
     throw new Error("No Agent thread id — focus the Agent chat you want, then retry.");

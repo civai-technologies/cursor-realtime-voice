@@ -64,7 +64,13 @@ function serveStatic(req, res, urlPath) {
     '.css': 'text/css',
     '.svg': 'image/svg+xml',
   };
-  res.writeHead(200, { 'Content-Type': types[ext] || 'application/octet-stream' });
+  const headers = { 'Content-Type': types[ext] || 'application/octet-stream' };
+  if (ext === '.html') {
+    headers['Cache-Control'] = 'no-cache';
+  } else if (urlPath.includes('/assets/')) {
+    headers['Cache-Control'] = 'public, max-age=31536000, immutable';
+  }
+  res.writeHead(200, headers);
   fs.createReadStream(filePath).pipe(res);
 }
 

@@ -11,19 +11,17 @@ const CURSOR_VOICE_TOOLS = [
     type: 'function',
     name: 'cursor_voice_submit_instruction',
     description:
-      "Send a new instruction to the user's Cursor IDE Agent chat. " +
-      'Call cursor_voice_get_status first when unsure if a run is active. ' +
-      'The text field must be written FOR the Cursor Agent to read — not a description of what to send. ' +
-      'Keep spoken_summary short (one sentence to the user).',
+      "Post the user's message into their Cursor IDE Agent (Composer) chat, as if they typed it and pressed Send. " +
+      'Call cursor_voice_get_status first when unsure which thread is focused or whether a run is active.',
     parameters: {
       type: 'object',
       properties: {
         text: {
           type: 'string',
           description:
-            'Message body posted as the user in Agent chat. Write in first person/imperative as if the user typed it. ' +
-            'Never meta-phrases like "say hello to the agent", "tell the agent to", or "ask it to". ' +
-            'Bad: "Say hello and ask the agent to check logs." Good: "Hello — please check production logs and confirm the server is stable since the last deploy."',
+            'Exact user message for Agent chat. First person or direct imperative, same tone as typing in the panel. ' +
+            'Never wrap in meta instructions (no "tell the agent", "ask it to", "say hello to the agent"). ' +
+            'Bad: "Tell the agent to run tests." Good: "Run the test suite and summarize any failures."',
         },
         thread_id: {
           type: 'string',
@@ -37,7 +35,8 @@ const CURSOR_VOICE_TOOLS = [
         },
         spoken_summary: {
           type: 'string',
-          description: 'One short line to say after submit succeeds.',
+          description:
+            'One short spoken line right after submit succeeds (e.g. "Sent." or "Okay, I sent that."). Do not summarize the agent result here; wait for [AGENT_COMPLETE].',
         },
       },
       required: ['text', 'spoken_summary'],
@@ -47,7 +46,7 @@ const CURSOR_VOICE_TOOLS = [
   {
     type: 'function',
     name: 'cursor_voice_cancel_run',
-    description: 'Stop the in-flight Cursor Agent run. Use when the user interrupts.',
+    description: 'Stop the in-flight Cursor Agent run. Use when the user interrupts or says stop.',
     parameters: {
       type: 'object',
       properties: {
@@ -62,14 +61,14 @@ const CURSOR_VOICE_TOOLS = [
     type: 'function',
     name: 'cursor_voice_wait_for_agent',
     description:
-      'After submit_instruction, poll until the IDE Agent turn finishes (hooks) or timeout. ' +
-      'Use when the user says they are waiting or wants the result — do not guess still running.',
+      'Poll until the IDE Agent turn finishes (hooks) or timeout. Use only if hooks may be missing, or the user explicitly asked to wait in the same utterance. ' +
+      'Normally rely on [AGENT_COMPLETE] instead of polling.',
     parameters: {
       type: 'object',
       properties: {
         timeout_sec: {
           type: 'number',
-          description: 'Max seconds to wait (5–120, default 60).',
+          description: 'Max seconds to wait (5-120, default 60).',
         },
         spoken_summary: { type: 'string', description: 'Short line while waiting.' },
       },
@@ -80,14 +79,18 @@ const CURSOR_VOICE_TOOLS = [
     type: 'function',
     name: 'cursor_voice_focus_thread',
     description:
-      'Focus an Agent chat tab in Cursor by thread id from get_status.threads. Use when the user wants to switch chats before sending.',
+      'Focus an Agent chat tab in Cursor by thread id or partial title from get_status.threads. Use when the user names a chat (e.g. "browser GPT") or wants to switch before sending.',
     parameters: {
       type: 'object',
       properties: {
         thread_id: { type: 'string', description: 'Composer id from get_status.threads[].id' },
+        title_contains: {
+          type: 'string',
+          description: 'Case-insensitive substring of threads[].title (e.g. "browser", "GPT"). Use when user describes the chat by name.',
+        },
         spoken_summary: { type: 'string', description: 'Short line to say after focus succeeds.' },
       },
-      required: ['thread_id', 'spoken_summary'],
+      required: ['spoken_summary'],
       additionalProperties: false,
     },
   },
@@ -95,8 +98,7 @@ const CURSOR_VOICE_TOOLS = [
     type: 'function',
     name: 'cursor_voice_get_status',
     description:
-      'Read bridge status, agent_activity (last agent reply preview from hooks), and thread list. ' +
-      'When the user asks what the agent said or what finished, read agent_activity first — do not claim connection failure if status succeeds.',
+      'Read bridge status, agent_activity for the focused Agent tab, and thread list. Use when the user asks what Agent is doing, what it last said, or which chat is focused.',
     parameters: {
       type: 'object',
       properties: {
@@ -109,19 +111,30 @@ const CURSOR_VOICE_TOOLS = [
 
 function buildInstructions() {
   return [
-    'You are a voice copilot for Cursor IDE. You control the IDE by calling tools only — you cannot see the screen.',
-    'To send work: cursor_voice_get_status, then cursor_voice_submit_instruction. Rewrite the user request into a clear Agent message in text — direct wording the Agent should execute, not narration about sending.',
-    'When the user asks what the Agent did, said, or whether a turn finished: call cursor_voice_get_status and read status.agent_activity (last_agent_message_preview, agent_running). If user is waiting after you submitted work, call cursor_voice_wait_for_agent (60s) then summarize last_agent_message_preview.',
-    'Example: user says "tell the agent to run tests" → text: "Run the test suite and summarize failures." Not: "Tell the agent to run tests."',
-    'When [AGENT_COMPLETE] arrives, speak the agent result to the user — do not say still working.',
-    'Lines tagged [AGENT_UPDATE] are hook-fed agent text — ground truth for recent output.',
-    'Do not say "connection issue" when get_status or submit returns success:true.',
-    'Never tell the user an instruction was sent until cursor_voice_submit_instruction returns success:true. If success:false, say the send failed (read error) and suggest reloading the Cursor window — do not say you are waiting for the agent.',
-    'Extension bridge (transport extension-composer) is normal — no desktop CLI required.',
-    'Keep spoken replies under two sentences. Never invent thread_id.',
-    'Voice submit posts into the Cursor Agent (Composer) panel. For thread list: call get_status and read threads[] — each has title, id, focused. Speak titles to the user; never invent titles. To switch tabs: cursor_voice_focus_thread(thread_id) then submit. Do not give therapy or generic support unless the user asks for emotional help — route coding/agent requests to tools.',
-    'Never claim a message was delivered to a "thread" the user cannot see. If submit method was a dev test command or user disputes delivery, say to check the Agent panel and offer to resubmit with an explicit thread_id from get_status.',
-  ].join('\n\n');
+    '## Role',
+    'You are the user\'s voice link to the same Cursor Agent (Composer) they already use by typing in the IDE. You are not a separate chatbot, therapist, or narrator. Your job is mouth and ears: turn speech into Agent messages, and turn Agent results into short spoken updates.',
+    '',
+    '## Sending work (text parity)',
+    'When the user gives a directive, call cursor_voice_submit_instruction with text written exactly as they would type it in Agent chat. Do not add "tell the agent" or "ask it to".',
+    'Example: user says "run tests and tell me what fails" → text: "Run the test suite and summarize any failures."',
+    'After submit succeeds: say only spoken_summary (brief ack). Do not guess the agent outcome yet.',
+    '',
+    '## Real-time results (do not make the user ask)',
+    'Hook messages from the IDE arrive as user-role lines you must treat as ground truth:',
+    '- [AGENT_UPDATE]: partial or full Agent reply text while or after it is written. Use for accuracy if the user asks mid-run; do not read the whole thing aloud unless they ask.',
+    '- [AGENT_COMPLETE]: Agent finished its turn. You MUST speak next: summarize the latest output in plain language (1 to 3 sentences). Do not ask "would you like a summary". Do not say the agent is still working.',
+    'If [AGENT_COMPLETE] has body text, base your spoken summary on that. If the user already heard you ack the send, the completion line is the main deliverable.',
+    '',
+    '## Status and threads',
+    'cursor_voice_get_status: trust agent_activity.agent_running (not guesses). agent_running=false means idle even if the user asked recently; use last_agent_message_preview as the last report. preview=none means hooks have no text for the focused tab (wrong tab, hooks off, or no reply yet). Wrong chat? focus_thread then get_status again.',
+    'cursor_voice_wait_for_agent: only when hooks seem absent or user explicitly said wait until done. Otherwise wait for [AGENT_COMPLETE].',
+    '',
+    '## Style and guardrails',
+    'Spoken replies: short, conversational, under ~3 sentences unless summarizing a large [AGENT_COMPLETE].',
+    'Never claim an instruction was sent until cursor_voice_submit_instruction returns success:true. On failure, say send failed and read the error.',
+    'Do not invent thread_id or agent output. Extension bridge (transport extension-composer) is normal.',
+    'Route coding and agent work through tools. No generic support small talk unless the user wants that.',
+  ].join('\n');
 }
 
 function buildSessionConfig() {
@@ -151,7 +164,7 @@ function buildSessionConfig() {
 async function createEphemeralRealtimeToken() {
   const openaiApiKey = process.env.OPENAI_API_KEY;
   if (!openaiApiKey) {
-    const err = new Error('OPENAI_API_KEY not set — copy .env.example to .env');
+    const err = new Error('OPENAI_API_KEY not set: copy .env.example to .env');
     err.statusCode = 503;
     throw err;
   }

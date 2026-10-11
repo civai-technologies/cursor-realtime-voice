@@ -2,48 +2,128 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Cursor Voice</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta
+      name="description"
+      content="Cursor Voice: speak to control your Cursor Agent chat. Runs locally on your machine."
+    />
+    <meta name="theme-color" content="#ffc414" />
+    <meta name="color-scheme" content="light" />
+    <title>Cursor Voice · Talk to your Agent</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=Lilita+One&display=swap"
+      rel="stylesheet"
+    />
     <link rel="stylesheet" href="/src/styles.css" />
   </head>
-  <body>
-    <main class="panel">
-      <header class="header">
-        <h1>Cursor Voice</h1>
-        <p class="sub">
-          Speak to send instructions into your open <strong>Cursor Agent</strong> chat. Recent agent replies
-          (when hooks are installed) appear as system lines and via <code>get_status</code>.
-        </p>
-      </header>
-
-      <section class="settings" id="settingsPanel">
-        <h2 class="settings-title">OpenAI API key</h2>
-        <p class="settings-hint" id="keyHint">Checking…</p>
-        <div class="settings-row">
-          <input
-            type="password"
-            id="apiKeyInput"
-            autocomplete="off"
-            placeholder="sk-…"
-            aria-label="OpenAI API key"
-          />
-          <button type="button" id="saveKeyBtn">Save key</button>
+  <body class="page">
+    <header class="top" role="banner">
+      <div class="wrap top-inner">
+        <div class="logo-mark" aria-hidden="true">CV</div>
+        <div class="logo-copy">
+          <span class="logo-title">Cursor Voice</span>
+          <span class="logo-sub">Talk to your Agent</span>
         </div>
-        <p class="settings-note">Stored in <code>.env</code> on this machine only (loopback server).</p>
+        <button
+          type="button"
+          class="btn line sm top-menu-btn"
+          id="openSettingsBtn"
+          aria-haspopup="dialog"
+          aria-controls="settingsModal"
+        >
+          Settings
+          <span class="key-pill" id="keyPill" hidden aria-hidden="true">Key</span>
+        </button>
+      </div>
+    </header>
+
+    <dialog id="settingsModal" class="modal" aria-labelledby="settings-heading">
+      <div class="modal-card">
+        <div class="modal-head">
+          <h2 id="settings-heading">OpenAI API key</h2>
+          <button type="button" class="btn line sm" id="closeSettingsBtn" aria-label="Close settings">
+            Close
+          </button>
+        </div>
+        <p class="settings-hint" id="keyHint">Checking…</p>
+        <div class="settings-body">
+          <div class="settings-row">
+            <label class="field">
+              <span class="field-label">API key</span>
+              <input
+                type="password"
+                id="apiKeyInput"
+                autocomplete="off"
+                placeholder="sk-…"
+                aria-label="OpenAI API key"
+                spellcheck="false"
+              />
+            </label>
+            <button type="button" class="btn gold" id="saveKeyBtn">Save key</button>
+          </div>
+          <p class="fine-print">Stored in <code>.env</code> on this machine only. Never sent to the public web.</p>
+        </div>
+      </div>
+    </dialog>
+
+    <main class="wrap main">
+      <section class="intro card" aria-labelledby="intro-heading">
+        <p class="eyebrow">Local · Loopback only</p>
+        <h1 id="intro-heading">Voice for Cursor Agent</h1>
+        <p class="lede">
+          Speak naturally. Your words become instructions in the open
+          <strong>Cursor Agent</strong> panel. Agent replies show here when hooks are installed.
+        </p>
       </section>
 
-      <section class="status" id="status">Not connected</section>
-      <section class="captions" id="captions" aria-live="polite"></section>
-      <footer class="actions">
-        <button type="button" id="startBtn">Start voice</button>
-        <button type="button" id="muteMicBtn" disabled aria-pressed="false">Mute mic</button>
-        <button type="button" id="stopAgentBtn" disabled>Stop agent run</button>
-        <button type="button" id="endBtn" disabled>End voice</button>
-      </footer>
-      <p class="mic-hint" id="micHint" hidden>
-        Mic auto-mutes while the voice assistant speaks. Unmute to interrupt.
-      </p>
+      <div class="status-bar" role="status" aria-live="polite" data-state="idle">
+        <span class="status-dot" aria-hidden="true"></span>
+        <p class="status-text" id="status">Not connected</p>
+      </div>
+
+      <div class="voice-orb-wrap">
+        <button
+          type="button"
+          id="voiceOrbBtn"
+          class="voice-orb voice-orb--idle"
+          aria-label="Start voice session"
+          aria-pressed="false"
+        >
+          <svg class="voice-orb-icon" viewBox="0 0 24 24" width="36" height="36" aria-hidden="true">
+            <path
+              fill="currentColor"
+              d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"
+            />
+          </svg>
+        </button>
+        <p class="voice-orb-caption" id="voiceOrbCaption">Tap to start voice</p>
+        <p class="voice-orb-hint" id="voiceOrbHint" hidden></p>
+        <div class="voice-secondary" id="voiceSecondary" hidden>
+          <button type="button" class="link-btn warn" id="stopAgentBtn" disabled>Stop agent</button>
+          <span class="voice-secondary-sep" aria-hidden="true">·</span>
+          <button type="button" class="link-btn" id="endSessionBtn" disabled>End session</button>
+        </div>
+      </div>
+
+      <section class="transcript card" aria-labelledby="transcript-heading">
+        <div class="sec-head compact transcript-head">
+          <h2 id="transcript-heading">Live transcript</h2>
+          <button type="button" class="btn line sm" id="copyTranscriptBtn" aria-label="Copy transcript to clipboard">
+            Copy
+          </button>
+        </div>
+        <div class="captions" id="captions" aria-live="polite"></div>
+        <p class="captions-empty" id="captionsEmpty">Start voice to see the conversation here.</p>
+      </section>
+
     </main>
+
+    <footer class="site-foot wrap" role="contentinfo">
+      <p>Cursor Voice by CIVAI TECHNOLOGIES · Local at <code>127.0.0.1</code></p>
+    </footer>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

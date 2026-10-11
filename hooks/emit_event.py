@@ -54,7 +54,7 @@ def map_hook(
     if hook_name == "sessionStart":
         return "session_start", "Agent session started", composer_s, None, True
     if hook_name == "sessionEnd":
-        return "session_end", "Agent session ended", composer_s, None, True
+        return "session_end", "Agent session ended", composer_s, None, False
     if hook_name == "stop":
         return "run_done", "Agent finished its turn", composer_s, None, True
     if hook_name == "afterAgentResponse":

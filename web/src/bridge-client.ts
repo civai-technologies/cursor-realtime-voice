@@ -8,7 +8,9 @@ export type BridgeConfig = {
 export async function loadBridgeConfig(): Promise<BridgeConfig> {
   const res = await fetch("/bridge-config");
   if (!res.ok) {
-    throw new Error("Bridge not ready — run `npm start` from cursor-voice, then refresh. Keep Cursor open with an Agent chat.");
+    throw new Error(
+      "Bridge not ready. Run `npm start` from cursor-voice, then refresh. Keep Cursor open with an Agent chat."
+    );
   }
   return (await res.json()) as BridgeConfig;
 }
@@ -59,10 +61,13 @@ export async function bridgeInstruct(
   return data;
 }
 
-export async function bridgeFocusThread(cfg: BridgeConfig, threadId: string): Promise<Record<string, unknown>> {
+export async function bridgeFocusThread(
+  cfg: BridgeConfig,
+  body: { thread_id?: string; title_contains?: string }
+): Promise<Record<string, unknown>> {
   const res = await bridgeFetch(cfg, "/v1/focus", {
     method: "POST",
-    body: JSON.stringify({ thread_id: threadId }),
+    body: JSON.stringify(body),
   });
   const data = (await res.json()) as Record<string, unknown>;
   if (!res.ok) {
@@ -84,11 +89,11 @@ export async function openBridgeEventStream(
   onEvent: (payload: Record<string, unknown>) => void,
   onError?: (err: Error) => void
 ): Promise<() => void> {
-  // Long-lived SSE — do not use a short AbortSignal.timeout (it kills the stream).
+  // Long-lived SSE: do not use a short AbortSignal.timeout (it kills the stream).
   const res = await bridgeFetch(cfg, "/v1/events/stream");
   if (!res.ok || !res.body) {
     throw new Error(
-      `IDE bridge failed (${res.status}). Quit old servers and run only: npm start — then open http://127.0.0.1:8787`
+      `IDE bridge failed (${res.status}). Quit old servers and run only: npm start, then open http://127.0.0.1:8787`
     );
   }
   const reader = res.body.getReader();

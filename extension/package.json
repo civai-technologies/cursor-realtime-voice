@@ -2,7 +2,7 @@
   "name": "cursor-voice-bridge",
   "displayName": "Cursor Voice Bridge",
   "description": "Loopback HTTP bridge: Composer instruct/cancel, hooks → SSE for cursor-voice",
-  "version": "0.1.14",
+  "version": "0.1.15",
   "license": "MIT",
   "repository": {
     "type": "git",

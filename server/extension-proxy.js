@@ -311,8 +311,12 @@ async function extensionRestartBridge() {
   return extensionReachable(4);
 }
 
-async function extensionFocusThread(threadId) {
-  const res = await extensionRequest('POST', '/v1/focus', { thread_id: threadId }, { timeoutMs: 15000 });
+async function extensionFocusThread(body) {
+  const payload =
+    typeof body === 'string'
+      ? { thread_id: body }
+      : { thread_id: body?.thread_id, title_contains: body?.title_contains };
+  const res = await extensionRequest('POST', '/v1/focus', payload, { timeoutMs: 15000 });
   if (!res) {
     return null;
   }

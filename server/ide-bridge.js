@@ -25,7 +25,46 @@ const state = {
   lastAgentMessage: null,
   lastAgentMessageAt: null,
   lastTurnFinishedAt: null,
+  lastInstructAt: null,
 };
+
+/** @type {Map<string, { lastAgentMessage: string|null, lastAgentMessageAt: string|null, lastTurnFinishedAt: string|null, lastInstructAt: string|null, running: boolean }>} */
+const threadSlots = new Map();
+
+function emptySlot() {
+  return {
+    lastAgentMessage: null,
+    lastAgentMessageAt: null,
+    lastTurnFinishedAt: null,
+    lastInstructAt: null,
+    running: false,
+  };
+}
+
+function deriveAgentRunning(slot, globalRunning, globalLastInstructAt, globalLastTurnFinishedAt) {
+  const raw = Boolean((slot && slot.running) || globalRunning);
+  if (!raw) {
+    return false;
+  }
+  const lastInstruct = (slot && slot.lastInstructAt) || globalLastInstructAt;
+  if (!lastInstruct) {
+    return false;
+  }
+  const lastDone = (slot && slot.lastTurnFinishedAt) || globalLastTurnFinishedAt;
+  if (lastDone && lastInstruct && lastDone >= lastInstruct) {
+    return false;
+  }
+  return true;
+}
+
+function slotFor(composerId) {
+  let slot = threadSlots.get(composerId);
+  if (!slot) {
+    slot = emptySlot();
+    threadSlots.set(composerId, slot);
+  }
+  return slot;
+}
 
 let bridgeToken = null;
 let stopExtensionRelay = null;
@@ -74,6 +113,17 @@ function isLikelyVoiceOrServerEcho(text) {
   );
 }
 
+function recordAssistantText(event, detailText) {
+  const trimmed = String(detailText).slice(0, 12000);
+  state.lastAgentMessage = trimmed;
+  state.lastAgentMessageAt = event.ts;
+  if (event.composer_id) {
+    const slot = slotFor(event.composer_id);
+    slot.lastAgentMessage = trimmed;
+    slot.lastAgentMessageAt = event.ts;
+  }
+}
+
 function recordAgentActivity(event) {
   if (
     event.kind === 'assistant_chunk' &&
@@ -81,8 +131,7 @@ function recordAgentActivity(event) {
     !/instruction sent/i.test(event.summary || '') &&
     !isLikelyVoiceOrServerEcho(event.detail)
   ) {
-    state.lastAgentMessage = String(event.detail).slice(0, 12000);
-    state.lastAgentMessageAt = event.ts;
+    recordAssistantText(event, event.detail);
   } else if (
     event.kind === 'assistant_chunk' &&
     event.summary &&
@@ -90,20 +139,35 @@ function recordAgentActivity(event) {
     !/instruction sent/i.test(event.summary) &&
     !isLikelyVoiceOrServerEcho(event.summary)
   ) {
-    state.lastAgentMessage = String(event.summary).slice(0, 12000);
-    state.lastAgentMessageAt = event.ts;
+    recordAssistantText(event, event.summary);
+  }
+  if (event.composer_id) {
+    const slot = slotFor(event.composer_id);
+    if (event.kind === 'instruct_sent') {
+      slot.running = true;
+      slot.lastInstructAt = event.ts;
+      state.running = true;
+      state.lastInstructAt = event.ts;
+    }
+    if (event.kind === 'run_done') {
+      slot.lastTurnFinishedAt = event.ts;
+      slot.running = false;
+      state.lastTurnFinishedAt = event.ts;
+      state.running = false;
+    }
+    if (event.kind === 'run_cancelled' || event.kind === 'session_end') {
+      slot.running = false;
+    }
   }
   if (event.kind === 'instruct_sent') {
     state.running = true;
+    state.lastInstructAt = event.ts;
   }
   if (event.kind === 'run_done') {
     state.lastTurnFinishedAt = event.ts;
     state.running = false;
   }
-  if (event.kind === 'session_start' || event.kind === 'tool_end') {
-    state.running = true;
-  }
-  if (event.kind === 'run_cancelled') {
+  if (event.kind === 'run_cancelled' || event.kind === 'session_end') {
     state.running = false;
   }
 }
@@ -124,11 +188,34 @@ function mergeAgentActivity(serverAct, extAct) {
     last_agent_message: pick('last_agent_message'),
     last_agent_message_at: pick('last_agent_message_at'),
     last_turn_finished_at: pick('last_turn_finished_at'),
-    agent_running: Boolean(serverAct.agent_running || extAct.agent_running),
+    agent_running: Boolean(extAct.agent_running ?? serverAct.agent_running),
+    last_instruct_at: extAct.last_instruct_at ?? serverAct.last_instruct_at,
   };
 }
 
-function agentActivityPayload() {
+function activityFromSlot(slot, composerId) {
+  const preview = slot.lastAgentMessage
+    ? slot.lastAgentMessage.split('\n').find((l) => l.trim())?.slice(0, 280) ||
+      slot.lastAgentMessage.slice(0, 280)
+    : null;
+  const slotRef = composerId ? threadSlots.get(composerId) : slot;
+  return {
+    last_agent_message_preview: preview,
+    last_agent_message: slot.lastAgentMessage ? slot.lastAgentMessage.slice(0, 4000) : null,
+    last_agent_message_at: slot.lastAgentMessageAt,
+    last_turn_finished_at: slot.lastTurnFinishedAt,
+    last_instruct_at: slot.lastInstructAt ?? state.lastInstructAt,
+    agent_running: deriveAgentRunning(slotRef, state.running, state.lastInstructAt, state.lastTurnFinishedAt),
+  };
+}
+
+function agentActivityPayload(composerId) {
+  if (composerId && threadSlots.has(composerId)) {
+    const slot = threadSlots.get(composerId);
+    if (slot && (slot.lastAgentMessage || slot.running || slot.lastTurnFinishedAt)) {
+      return activityFromSlot(slot, composerId);
+    }
+  }
   const preview = state.lastAgentMessage
     ? state.lastAgentMessage.split('\n').find((l) => l.trim())?.slice(0, 280) ||
       state.lastAgentMessage.slice(0, 280)
@@ -138,7 +225,8 @@ function agentActivityPayload() {
     last_agent_message: state.lastAgentMessage ? state.lastAgentMessage.slice(0, 4000) : null,
     last_agent_message_at: state.lastAgentMessageAt,
     last_turn_finished_at: state.lastTurnFinishedAt,
-    agent_running: state.running,
+    last_instruct_at: state.lastInstructAt,
+    agent_running: deriveAgentRunning(undefined, state.running, state.lastInstructAt, state.lastTurnFinishedAt),
   };
 }
 
@@ -205,23 +293,35 @@ async function getStatusPayload() {
   if (transport === 'extension') {
     const ext = await extensionGetStatus();
     if (ext) {
+      const focusedId = ext.focused_composer_id ?? ext.composer_id ?? state.lastThreadId;
+      const serverAct = agentActivityPayload(focusedId);
+      const extAct = ext.agent_activity || {};
+      const merged = mergeAgentActivity(serverAct, extAct);
+      const focusedRunning = Boolean(merged.agent_running);
       return {
-        running: Boolean(state.running || ext.running),
-        composer_id: ext.composer_id ?? state.lastThreadId,
+        running: focusedRunning,
+        composer_id: focusedId,
         thread_title: ext.thread_title ?? state.lastThreadTitle,
         last_event_at: ext.last_event_at ?? state.lastEventAt,
         threads: ext.threads || [],
         focused_composer_id: ext.focused_composer_id ?? null,
+        activity_composer_id: ext.activity_composer_id ?? focusedId,
         transport: 'extension-composer',
         extension_reachable: true,
         extension: probe,
-        agent_activity: mergeAgentActivity(agentActivityPayload(), ext.agent_activity || {}),
+        agent_activity: merged,
       };
     }
   }
 
+  const offlineRunning = deriveAgentRunning(
+    state.lastThreadId ? threadSlots.get(state.lastThreadId) : undefined,
+    state.running,
+    state.lastInstructAt,
+    state.lastTurnFinishedAt
+  );
   return {
-    running: state.running,
+    running: offlineRunning,
     composer_id: state.lastThreadId,
     thread_title: state.lastThreadTitle,
     last_event_at: state.lastEventAt,
@@ -303,8 +403,9 @@ async function handleIdeBridge(req, res, url, sendJson, readBody) {
     if (req.method === 'POST' && url.pathname === '/v1/focus') {
       const body = JSON.parse((await readBody(req)) || '{}');
       const threadId = String(body.thread_id || '').trim();
-      if (!threadId) {
-        sendJson(res, 400, { error: 'thread_id required' });
+      const titleContains = String(body.title_contains || '').trim();
+      if (!threadId && !titleContains) {
+        sendJson(res, 400, { error: 'thread_id or title_contains required' });
         return true;
       }
       const transport = await resolveTransport();
@@ -312,7 +413,7 @@ async function handleIdeBridge(req, res, url, sendJson, readBody) {
         sendJson(res, 503, await extensionUnreachableResponse());
         return true;
       }
-      const result = await extensionFocusThread(threadId);
+      const result = await extensionFocusThread({ thread_id: threadId || undefined, title_contains: titleContains || undefined });
       if (!result || result.status < 200 || result.status >= 300) {
         sendJson(res, result?.status || 503, result?.body || { error: 'focus failed' });
         return true;

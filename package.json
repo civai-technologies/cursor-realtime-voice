@@ -1,7 +1,7 @@
 {
   "name": "cursor-voice",
   "version": "0.1.0",
-  "description": "Voice control for Cursor IDE Agent using OpenAI Realtime and a local extension bridge",
+  "description": "Voice control for Cursor IDE Agent by CIVAI Technologies. OpenAI Realtime and a local extension bridge.",
   "license": "MIT",
   "author": "CIVAI Technologies",
   "repository": {
@@ -11,7 +11,7 @@
   "bugs": {
     "url": "https://github.com/civai-technologies/cursor-voice/issues"
   },
-  "homepage": "https://github.com/civai-technologies/cursor-voice#readme",
+  "homepage": "https://civai.co",
   "keywords": [
     "cursor",
     "voice",

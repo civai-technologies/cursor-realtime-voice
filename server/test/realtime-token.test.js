@@ -13,8 +13,8 @@ async function main() {
     console.error('SKIP: set OPENAI_API_KEY in cursor-voice/.env');
     process.exit(0);
   }
-  if (CURSOR_VOICE_TOOLS.length !== 3) {
-    throw new Error('expected 3 tools');
+  if (CURSOR_VOICE_TOOLS.length !== 5) {
+    throw new Error(`expected 5 tools, got ${CURSOR_VOICE_TOOLS.length}`);
   }
   const token = await createEphemeralRealtimeToken();
   if (token.status !== 'success' || !token.client_secret?.value) {

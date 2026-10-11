@@ -11,6 +11,7 @@ export default defineConfig({
     proxy: {
       "/api": upstream,
       "/bridge-config": upstream,
+      "/v1": upstream,
     },
   },
 });

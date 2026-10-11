@@ -142,3 +142,28 @@ export async function listComposerThreadsDetailed(): Promise<ComposerThreadRow[]
   }
   return rows;
 }
+
+/** Resolve a composer id by partial title match (case-insensitive). */
+export async function resolveComposerThreadId(options: {
+  threadId?: string;
+  titleContains?: string;
+}): Promise<string> {
+  const explicit = options.threadId?.trim();
+  if (explicit) {
+    return explicit;
+  }
+  const hint = options.titleContains?.trim();
+  if (!hint) {
+    throw new Error("thread_id or title_contains required");
+  }
+  const threads = await listComposerThreadsDetailed();
+  const needle = hint.toLowerCase();
+  const match = threads.find((t) => t.title.toLowerCase().includes(needle));
+  if (match) {
+    return match.id;
+  }
+  const titles = threads.map((t) => t.title).join("; ");
+  throw new Error(
+    `No Agent thread title containing "${hint}". Open chats: ${titles || "none listed — open Agent panel first."}`
+  );
+}

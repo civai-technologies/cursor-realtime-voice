@@ -12,7 +12,7 @@ import {
   listComposerThreads,
   submitComposerInstruction,
 } from "./composerInstruct";
-import { listComposerThreadsDetailed } from "./composerThreadMeta";
+import { listComposerThreadsDetailed, resolveComposerThreadId } from "./composerThreadMeta";
 import type { HarnessEvent } from "./types";
 
 export type BridgeConfig = {
@@ -273,7 +273,7 @@ export class BridgeServer {
         }
         const focusedComposerId = await getFocusedComposerId();
         json(res, 200, {
-          ...this.state.snapshot(),
+          ...this.state.snapshot(focusedComposerId),
           threads,
           focused_composer_id: focusedComposerId,
           transport: "extension-composer",
@@ -282,14 +282,22 @@ export class BridgeServer {
       }
 
       if (method === "POST" && url.pathname === "/v1/focus") {
-        const body = (await readJsonBody(req)) as { thread_id?: string };
-        const threadId = body.thread_id?.trim();
+        const body = (await readJsonBody(req)) as { thread_id?: string; title_contains?: string };
+        let threadId = body.thread_id?.trim();
+        const titleHint = body.title_contains?.trim();
+        if (!threadId && titleHint) {
+          threadId = await resolveComposerThreadId({ titleContains: titleHint });
+        }
         if (!threadId) {
-          json(res, 400, { error: "thread_id required" });
+          json(res, 400, { error: "thread_id or title_contains required" });
           return;
         }
-        const resolved = await focusComposerThread(threadId);
-        json(res, 200, { focused: true, thread_id: resolved });
+        const focusResult = await focusComposerThread(threadId, { softVerify: true });
+        json(res, 200, {
+          focused: focusResult.verified,
+          thread_id: focusResult.threadId,
+          warning: focusResult.warning,
+        });
         return;
       }
 

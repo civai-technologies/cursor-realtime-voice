@@ -72,7 +72,7 @@ export class CursorVoiceSession {
     if (!tokenRes.ok || tokenData.status !== "success") {
       if (tokenData.error === "missing_openai_api_key") {
         throw new Error(
-          "OpenAI API key missing — enter it in Settings on this page, then click Start voice again."
+          "OpenAI API key missing. Open Settings on this page, enter your key, then click Start voice again."
         );
       }
       throw new Error(
@@ -121,7 +121,7 @@ export class CursorVoiceSession {
           const preview = detail.split("\n").find((l) => l.trim())?.slice(0, 500) || detail.slice(0, 500);
           this.pushCaption("agent", preview);
           this.sendUserText(
-            `[AGENT_UPDATE] New agent message (use for user questions): ${detail.slice(0, 1500)}`,
+            `[AGENT_UPDATE] Cursor Agent wrote (ground truth; do not read aloud unless the user asks): ${detail.slice(0, 1500)}`,
             { skipSpokenResponse: true }
           );
           return;
@@ -131,7 +131,7 @@ export class CursorVoiceSession {
         }
       },
       () => {
-        /* optional progress stream — voice works without it */
+        /* optional progress stream; voice works without it */
       }
     ).then((stop) => {
       this.stopEvents = stop;
@@ -143,16 +143,16 @@ export class CursorVoiceSession {
       const transport = (status as { transport?: string }).transport;
       const threads = status.threads;
       if (transport === "extension-composer") {
-        this.callbacks.onStatus("Live — extension bridge (speak to control Agent)");
+        this.callbacks.onStatus("Live: extension bridge (speak to control Agent)");
       } else if (Array.isArray(threads) && threads.length === 0) {
         this.callbacks.onStatus(
-          "Live — install Cursor Voice extension + open Agent, then speak"
+          "Live: install Cursor Voice extension and open Agent, then speak"
         );
       } else {
-        this.callbacks.onStatus("Live — speak to control Cursor Agent");
+        this.callbacks.onStatus("Live: speak to control Cursor Agent");
       }
     } catch {
-      this.callbacks.onStatus("Live — speak to control Cursor Agent");
+      this.callbacks.onStatus("Live: speak to control Cursor Agent");
     }
   }
 
@@ -216,20 +216,31 @@ export class CursorVoiceSession {
       const st = output.status as Record<string, unknown> | undefined;
       const act = st?.agent_activity as Record<string, unknown> | undefined;
       const preview = act?.last_agent_message_preview;
-      const running = st?.running === true || act?.agent_running === true;
+      const running = act?.agent_running === true || st?.running === true;
+      const turnDone = act?.last_turn_finished_at;
+      const lastMsgAt = act?.last_agent_message_at;
       const threads = st?.threads as Array<Record<string, unknown>> | undefined;
       const threadLine =
         Array.isArray(threads) && threads.length > 0
           ? threads
               .map((t) => {
                 const title = String(t.title || "Agent");
-                const id = String(t.id || "").slice(0, 8);
+                const shortId = String(t.id || "").slice(0, 8);
                 const mark = t.focused === true ? "*" : "";
-                return `${mark}${title}(${id})`;
+                const titleAlreadyHasId =
+                  shortId.length > 0 && title.toLowerCase().includes(shortId.toLowerCase());
+                const label = titleAlreadyHasId ? title : `${title} · ${shortId}`;
+                return `${mark}${label}`;
               })
               .join(", ")
           : "no threads";
-      return `running=${running} threads=${threadLine} preview=${preview ? String(preview).slice(0, 100) : "—"}`;
+      const runLabel = running ? "true" : "false";
+      const previewText = preview ? String(preview).slice(0, 100) : "none";
+      const timing =
+        turnDone || lastMsgAt
+          ? ` last_msg_at=${lastMsgAt || "none"} turn_finished_at=${turnDone || "none"}`
+          : "";
+      return `agent_running=${runLabel} threads=${threadLine} preview=${previewText}${timing}. If agent_running=false and preview is set, the agent is idle: read preview as the last report. Do not claim still running.`;
     }
     if (name === "cursor_voice_focus_thread") {
       const tid = (output.result as Record<string, unknown> | undefined)?.thread_id;
@@ -269,12 +280,15 @@ export class CursorVoiceSession {
       }
       const msg = preview || fallbackSummary;
       this.sendUserText(
-        `[AGENT_COMPLETE] The IDE Agent finished its turn. Latest output: ${msg.slice(0, 2000)}. ` +
-          "Briefly tell the user the result in one or two sentences.",
+        `[AGENT_COMPLETE] Cursor Agent finished its turn. Summarize this for the user out loud now (1 to 3 sentences, plain language). ` +
+          `Do not ask if they want a summary. Latest output:\n${msg.slice(0, 2000)}`,
         { skipSpokenResponse: false }
       );
     } catch {
-      this.sendUserText(`[AGENT_COMPLETE] ${fallbackSummary}`, { skipSpokenResponse: false });
+      this.sendUserText(
+        `[AGENT_COMPLETE] Cursor Agent finished. Summarize for the user out loud now:\n${fallbackSummary}`,
+        { skipSpokenResponse: false }
+      );
     }
   }
 
@@ -479,7 +493,8 @@ export class CursorVoiceSession {
     await this.pc.setRemoteDescription({ type: "answer", sdp: answer });
 
     this.sendUserText(
-      "Voice session started. The user will speak to control their Cursor IDE Agent. Use cursor_voice_* tools for actions.",
+      "Voice session started. The user speaks to the same Cursor Agent they type to in the IDE. " +
+        "Post their words with cursor_voice_submit_instruction. When [AGENT_COMPLETE] arrives, speak the result without being asked.",
       { skipSpokenResponse: true }
     );
   }
@@ -606,12 +621,21 @@ export class CursorVoiceSession {
         };
       } else if (name === "cursor_voice_focus_thread") {
         const threadId = String(args.thread_id || "").trim();
-        const result = await bridgeFocusThread(this.bridge, threadId);
+        const titleContains = String(args.title_contains || "").trim();
+        if (!threadId && !titleContains) {
+          throw new Error("thread_id or title_contains required");
+        }
+        const result = await bridgeFocusThread(this.bridge, {
+          thread_id: threadId || undefined,
+          title_contains: titleContains || undefined,
+        });
+        const verified = result.focused !== false;
         output = {
           success: true,
           result,
           spoken_summary:
-            (typeof args.spoken_summary === "string" && args.spoken_summary) || "Switched Agent chat.",
+            (typeof args.spoken_summary === "string" && args.spoken_summary) ||
+            (verified ? "Switched Agent chat." : "Requested that Agent chat. Confirm the right tab is open."),
         };
       } else if (name === "cursor_voice_wait_for_agent") {
         const timeout = typeof args.timeout_sec === "number" ? args.timeout_sec : 60;
