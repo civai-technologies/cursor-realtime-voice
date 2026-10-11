@@ -7,10 +7,12 @@ import * as vscode from "vscode";
 import { BridgeState } from "./bridgeState";
 import {
   cancelComposerRun,
+  focusComposerThread,
   getFocusedComposerId,
   listComposerThreads,
   submitComposerInstruction,
 } from "./composerInstruct";
+import { listComposerThreadsDetailed } from "./composerThreadMeta";
 import type { HarnessEvent } from "./types";
 
 export type BridgeConfig = {
@@ -19,6 +21,7 @@ export type BridgeConfig = {
   token: string;
   created_at: string;
   source?: string;
+  bridge_active?: boolean;
 };
 
 /** Written for the voice server to discover this extension (not overwritten by npm start). */
@@ -97,6 +100,15 @@ export class BridgeServer {
     return this.config;
   }
 
+  /** Keep ~/.cursor/cursor-voice-extension.json aligned with the in-memory bridge (fixes stale port after reload). */
+  private persistConfigToDisk(): void {
+    if (!this.config) {
+      return;
+    }
+    fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(this.config, null, 2), { mode: 0o600 });
+  }
+
   async start(): Promise<BridgeConfig> {
     if (this.server) {
       await this.stop();
@@ -119,10 +131,10 @@ export class BridgeServer {
       token,
       created_at: new Date().toISOString(),
       source: "cursor-voice-extension",
+      bridge_active: true,
     };
     this.server = server;
-    fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
-    fs.writeFileSync(CONFIG_PATH, JSON.stringify(this.config, null, 2), { mode: 0o600 });
+    this.persistConfigToDisk();
     return this.config;
   }
 
@@ -131,9 +143,39 @@ export class BridgeServer {
       await new Promise<void>((resolve) => this.server!.close(() => resolve()));
       this.server = null;
     }
+    const prev = this.config;
     this.config = null;
     try {
-      fs.unlinkSync(CONFIG_PATH);
+      if (prev) {
+        fs.writeFileSync(
+          CONFIG_PATH,
+          JSON.stringify(
+            {
+              ...prev,
+              bridge_active: false,
+              stopped_at: new Date().toISOString(),
+            },
+            null,
+            2
+          ),
+          { mode: 0o600 }
+        );
+      } else if (fs.existsSync(CONFIG_PATH)) {
+        const raw = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
+        fs.writeFileSync(
+          CONFIG_PATH,
+          JSON.stringify(
+            {
+              ...raw,
+              bridge_active: false,
+              stopped_at: new Date().toISOString(),
+            },
+            null,
+            2
+          ),
+          { mode: 0o600 }
+        );
+      }
     } catch {
       // ignore
     }
@@ -164,7 +206,18 @@ export class BridgeServer {
       const method = req.method || "GET";
 
       if (method === "GET" && url.pathname === "/v1/health") {
-        json(res, 200, { ok: true });
+        this.persistConfigToDisk();
+        json(res, 200, { ok: true, port: this.config?.port ?? null });
+        return;
+      }
+
+      if (method === "GET" && url.pathname === "/v1/bootstrap") {
+        this.persistConfigToDisk();
+        json(res, 200, {
+          ok: true,
+          port: this.config?.port ?? null,
+          config_path: CONFIG_PATH,
+        });
         return;
       }
 
@@ -210,9 +263,13 @@ export class BridgeServer {
       if (method === "GET" && url.pathname === "/v1/status") {
         let threads: unknown[] = [];
         try {
-          threads = await listComposerThreads();
+          threads = await listComposerThreadsDetailed();
         } catch {
-          threads = [];
+          try {
+            threads = await listComposerThreads();
+          } catch {
+            threads = [];
+          }
         }
         const focusedComposerId = await getFocusedComposerId();
         json(res, 200, {
@@ -221,6 +278,18 @@ export class BridgeServer {
           focused_composer_id: focusedComposerId,
           transport: "extension-composer",
         });
+        return;
+      }
+
+      if (method === "POST" && url.pathname === "/v1/focus") {
+        const body = (await readJsonBody(req)) as { thread_id?: string };
+        const threadId = body.thread_id?.trim();
+        if (!threadId) {
+          json(res, 400, { error: "thread_id required" });
+          return;
+        }
+        const resolved = await focusComposerThread(threadId);
+        json(res, 200, { focused: true, thread_id: resolved });
         return;
       }
 

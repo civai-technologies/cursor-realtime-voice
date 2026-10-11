@@ -1,35 +1,27 @@
 import * as vscode from "vscode";
+import { listComposerThreadsDetailed } from "./composerThreadMeta";
+import { submitAgentMessage } from "./composerSubmit";
 
 export type ComposerThread = {
   id: string;
   title?: string;
+  focused?: boolean;
+  status?: string;
 };
+
+const FORBIDDEN_FOCUS_COMMANDS = new Set([
+  "workbench.action.chat.open",
+  "workbench.action.chat.testOpenWithPrompt",
+]);
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** List Agent / Composer thread ids visible to the focused window (no desktop CLI). */
+/** List Agent / Composer thread ids visible to the focused window. */
 export async function listComposerThreads(): Promise<ComposerThread[]> {
-  const ids: string[] = [];
-  try {
-    const raw = await vscode.commands.executeCommand<unknown>("composer.getOrderedSelectedComposerIds");
-    if (Array.isArray(raw)) {
-      for (const id of raw) {
-        if (typeof id === "string" && id.length > 0) {
-          ids.push(id);
-        }
-      }
-    }
-  } catch {
-    // command missing on older builds
-  }
-
-  if (ids.length === 0) {
-    return [{ id: "active-composer", title: "Active Agent chat" }];
-  }
-
-  return ids.map((id) => ({ id, title: "Agent" }));
+  const detailed = await listComposerThreadsDetailed();
+  return detailed.map((t) => ({ id: t.id, title: t.title, focused: t.focused, status: t.status }));
 }
 
 export async function getFocusedComposerId(): Promise<string | null> {
@@ -48,15 +40,26 @@ export async function getFocusedComposerId(): Promise<string | null> {
   return threads[0]?.id ?? null;
 }
 
-export async function focusComposer(): Promise<void> {
+async function runComposerCommand(cmd: string, args?: unknown): Promise<void> {
+  if (FORBIDDEN_FOCUS_COMMANDS.has(cmd)) {
+    throw new Error(`Forbidden command: ${cmd}`);
+  }
+  if (args === undefined) {
+    await vscode.commands.executeCommand(cmd);
+  } else {
+    await vscode.commands.executeCommand(cmd, args);
+  }
+}
+
+async function focusComposerSurface(): Promise<void> {
   const focusCommands = [
+    "composer.open_chat_sidebar",
     "composer.focusComposer",
-    "workbench.action.chat.open",
     "aichat.view",
   ];
   for (const cmd of focusCommands) {
     try {
-      await vscode.commands.executeCommand(cmd);
+      await runComposerCommand(cmd);
       return;
     } catch {
       // try next
@@ -64,27 +67,55 @@ export async function focusComposer(): Promise<void> {
   }
 }
 
-/** Focus a specific Composer thread when Cursor exposes an open-by-id command. */
+function threadFocusMatches(focused: string | null, threadId: string): boolean {
+  if (!focused) {
+    return false;
+  }
+  if (threadId === "active-composer") {
+    return true;
+  }
+  return focused === threadId;
+}
+
 export async function focusComposerThread(threadId?: string): Promise<string> {
-  if (threadId && threadId !== "active-composer") {
+  const target = threadId && threadId !== "active-composer" ? threadId : (await getFocusedComposerId()) || threadId;
+
+  if (target && target !== "active-composer") {
+    const alreadyFocused = await getFocusedComposerId();
+    if (threadFocusMatches(alreadyFocused, target)) {
+      return target;
+    }
     const openAttempts: Array<{ cmd: string; args?: unknown }> = [
-      { cmd: "composer.openComposer", args: { composerId: threadId } },
-      { cmd: "composer.openComposer", args: threadId },
-      { cmd: "composer.focusComposer", args: threadId },
+      { cmd: "composer.focusComposer", args: target },
+      { cmd: "composer.openComposer", args: { composerId: target } },
+      { cmd: "composer.openComposer", args: target },
     ];
     for (const { cmd, args } of openAttempts) {
       try {
-        await vscode.commands.executeCommand(cmd, args);
-        await delay(200);
-        return threadId;
+        await runComposerCommand(cmd, args);
+        await delay(280);
+        const focused = await getFocusedComposerId();
+        if (threadFocusMatches(focused, target)) {
+          return target;
+        }
       } catch {
         // try next
       }
     }
   }
-  await focusComposer();
+
   await delay(120);
-  return (await getFocusedComposerId()) || threadId || "active-composer";
+  const focused = await getFocusedComposerId();
+  if (target && target !== "active-composer" && !threadFocusMatches(focused, target)) {
+    throw new Error(
+      `Could not focus Agent thread ${target}. Click the Agent (Composer) panel on the right, then try again.`
+    );
+  }
+  return focused || target || "active-composer";
+}
+
+export async function focusComposer(): Promise<void> {
+  await focusComposerSurface();
 }
 
 export async function cancelComposerRun(): Promise<void> {
@@ -95,34 +126,13 @@ export async function cancelComposerRun(): Promise<void> {
   ];
   for (const cmd of cmds) {
     try {
-      await vscode.commands.executeCommand(cmd);
+      await runComposerCommand(cmd);
     } catch {
       // optional
     }
   }
 }
 
-async function submitViaPaste(trimmed: string): Promise<{ method: string; threadId?: string }> {
-  await vscode.env.clipboard.writeText(trimmed);
-  const pasteAttempts = ["composer.pasteText", "editor.action.clipboardPasteAction"];
-  for (const pasteCmd of pasteAttempts) {
-    try {
-      await vscode.commands.executeCommand(pasteCmd);
-      await delay(80);
-      await vscode.commands.executeCommand("composer.submit");
-      const threads = await listComposerThreads();
-      return { method: `${pasteCmd}+composer.submit`, threadId: threads[0]?.id };
-    } catch {
-      // try next paste command
-    }
-  }
-  throw new Error("paste+submit failed");
-}
-
-/**
- * Submit a user instruction into the focused (or selected) Agent / Composer chat.
- * Never uses dev-only testOpenWithPrompt (that opens a test dialog, not the real thread).
- */
 export async function submitComposerInstruction(
   text: string,
   options?: { abortFirst?: boolean; threadId?: string }
@@ -138,45 +148,26 @@ export async function submitComposerInstruction(
   }
 
   const threads = await listComposerThreads();
-  let targetId = options?.threadId;
+  const focusedId = await getFocusedComposerId();
+  let targetId = options?.threadId ?? focusedId ?? undefined;
   if (targetId && !threads.some((t) => t.id === targetId)) {
-    targetId = undefined;
+    targetId = focusedId ?? undefined;
   }
-  if (!targetId) {
-    targetId = (await getFocusedComposerId()) || threads[0]?.id || "active-composer";
-  }
-
-  const resolvedThread = await focusComposerThread(targetId);
-  await delay(100);
-
-  const attempts: Array<{ cmd: string; args?: unknown }> = [
-    { cmd: "composer.startComposerPrompt2", args: { prompt: trimmed } },
-    { cmd: "composer.startComposerPrompt2", args: trimmed },
-    { cmd: "composer.startComposerPrompt", args: trimmed },
-    { cmd: "aichat.newfollowupaction", args: trimmed },
-  ];
-
-  let lastError: unknown;
-  for (const { cmd, args } of attempts) {
-    try {
-      if (args === undefined) {
-        await vscode.commands.executeCommand(cmd);
-      } else {
-        await vscode.commands.executeCommand(cmd, args);
-      }
-      return { method: cmd, threadId: resolvedThread };
-    } catch (e) {
-      lastError = e;
-    }
+  if (!targetId || targetId === "active-composer") {
+    throw new Error(
+      "Click the Agent chat you want on the right (focus the message box), then run Voice send again. Voice will not switch tabs for you."
+    );
   }
 
-  try {
-    const pasted = await submitViaPaste(trimmed);
-    return { method: pasted.method, threadId: resolvedThread };
-  } catch (e) {
-    lastError = e;
+  let resolvedThread = targetId;
+  if (!threadFocusMatches(focusedId, targetId)) {
+    resolvedThread = await focusComposerThread(targetId);
+  }
+  if (resolvedThread === "active-composer") {
+    throw new Error("No Agent thread id — focus the Agent chat you want, then retry.");
   }
 
-  const msg = lastError instanceof Error ? lastError.message : String(lastError);
-  throw new Error(`Could not submit to Agent chat (${msg})`);
+  await delay(80);
+  const sent = await submitAgentMessage(trimmed, resolvedThread);
+  return { method: sent.method, threadId: resolvedThread };
 }

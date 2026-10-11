@@ -24,11 +24,20 @@ export class BridgeState {
     }
     if (
       event.kind === "assistant_chunk" &&
-      event.detail &&
       !/instruction sent/i.test(event.summary || "")
     ) {
-      this.lastAgentMessage = event.detail.slice(0, 12000);
-      this.lastAgentMessageAt = event.ts;
+      const body =
+        (event.detail && event.detail.trim()) ||
+        (event.summary && !/^agent responded$/i.test(event.summary) ? event.summary : "");
+      const echo =
+        /127\.0\.0\.1:8787|cursor-voice-server|Start voice|cursor_voice_/i.test(body);
+      if (body && !echo) {
+        this.lastAgentMessage = body.slice(0, 12000);
+        this.lastAgentMessageAt = event.ts;
+      }
+    }
+    if (event.kind === "instruct_sent") {
+      this.running = true;
     }
     if (event.kind === "run_done") {
       this.lastTurnFinishedAt = event.ts;

@@ -1,8 +1,8 @@
 {
   "name": "cursor-voice-bridge",
   "displayName": "Cursor Voice Bridge",
-  "description": "Loopback HTTP bridge: desktop send, cancel, hooks → SSE for cursor-voice",
-  "version": "0.1.0",
+  "description": "Loopback HTTP bridge: Composer instruct/cancel, hooks → SSE for cursor-voice",
+  "version": "0.1.14",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -31,7 +31,11 @@
       },
       {
         "command": "cursorVoiceBridge.testSubmit",
-        "title": "Cursor Voice: Test Send to Agent"
+        "title": "Cursor Voice: Send test line to Agent chat"
+      },
+      {
+        "command": "cursorVoiceBridge.openVoiceUi",
+        "title": "Cursor Voice: Open voice in browser"
       }
     ]
   },

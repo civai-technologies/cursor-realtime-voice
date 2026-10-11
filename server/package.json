@@ -5,7 +5,6 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "bridge": "node local-bridge.js",
     "test": "node test/realtime-token.test.js"
   },
   "dependencies": {

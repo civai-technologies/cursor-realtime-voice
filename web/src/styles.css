@@ -153,6 +153,18 @@ body {
   gap: 0.5rem;
 }
 
+.mic-hint {
+  margin: 0.65rem 0 0;
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+#muteMicBtn[aria-pressed="true"] {
+  background: #fef3c7;
+  border-color: #f59e0b;
+  color: #92400e;
+}
+
 button {
   padding: 0.5rem 0.85rem;
   border-radius: 8px;

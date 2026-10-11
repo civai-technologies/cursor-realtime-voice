@@ -1,6 +1,7 @@
 import {
   type BridgeConfig,
   bridgeCancel,
+  bridgeFocusThread,
   bridgeGetStatus,
   bridgeInstruct,
   openBridgeEventStream,
@@ -12,10 +13,17 @@ export type CaptionLine = {
   toolName?: string;
 };
 
+export type MicUiState = {
+  userMuted: boolean;
+  micEnabled: boolean;
+  agentSpeaking: boolean;
+};
+
 export type SessionCallbacks = {
   onStatus: (text: string) => void;
   onCaptions: (lines: CaptionLine[]) => void;
   onError: (message: string) => void;
+  onMicState?: (state: MicUiState) => void;
 };
 
 const ECHO_RESTORE_MS = 400;
@@ -31,6 +39,7 @@ export class CursorVoiceSession {
   private hasActiveResponse = false;
   private queuedResponseCreate = false;
   private userMuted = false;
+  private agentSpeaking = false;
   private isMuted = false;
   private stopEvents: (() => void) | null = null;
   private finished = false;
@@ -128,6 +137,7 @@ export class CursorVoiceSession {
       this.stopEvents = stop;
     });
     await this.connectWebRtc(secret);
+    this.emitMicState();
     try {
       const status = await bridgeGetStatus(this.bridge);
       const transport = (status as { transport?: string }).transport;
@@ -206,8 +216,24 @@ export class CursorVoiceSession {
       const st = output.status as Record<string, unknown> | undefined;
       const act = st?.agent_activity as Record<string, unknown> | undefined;
       const preview = act?.last_agent_message_preview;
-      const running = act?.agent_running;
-      return `running=${running} preview=${preview ? String(preview).slice(0, 120) : "—"}`;
+      const running = st?.running === true || act?.agent_running === true;
+      const threads = st?.threads as Array<Record<string, unknown>> | undefined;
+      const threadLine =
+        Array.isArray(threads) && threads.length > 0
+          ? threads
+              .map((t) => {
+                const title = String(t.title || "Agent");
+                const id = String(t.id || "").slice(0, 8);
+                const mark = t.focused === true ? "*" : "";
+                return `${mark}${title}(${id})`;
+              })
+              .join(", ")
+          : "no threads";
+      return `running=${running} threads=${threadLine} preview=${preview ? String(preview).slice(0, 100) : "—"}`;
+    }
+    if (name === "cursor_voice_focus_thread") {
+      const tid = (output.result as Record<string, unknown> | undefined)?.thread_id;
+      return output.success === true ? `focused ${String(tid || "").slice(0, 8)}` : "focus failed";
     }
     if (name === "cursor_voice_wait_for_agent") {
       const wait = output.wait as Record<string, unknown> | undefined;
@@ -264,7 +290,7 @@ export class CursorVoiceSession {
       const finishedAt = act.last_turn_finished_at as string | undefined;
       const messageAt = act.last_agent_message_at as string | undefined;
       const preview = act.last_agent_message_preview as string | undefined;
-      const running = act.agent_running === true;
+      const running = status.running === true || act.agent_running === true;
 
       if (preview) {
         lastPreview = preview;
@@ -273,7 +299,14 @@ export class CursorVoiceSession {
       const finishedAfterInstruct = Boolean(finishedAt && finishedAt > since);
       const newMessageAfterInstruct = Boolean(messageAt && messageAt > since && preview);
 
-      if ((finishedAfterInstruct && !running) || (newMessageAfterInstruct && !running)) {
+      if (finishedAfterInstruct) {
+        return {
+          completed: true,
+          activity: act,
+          last_agent_message_preview: preview || lastPreview,
+        };
+      }
+      if (newMessageAfterInstruct && !running) {
         return {
           completed: true,
           activity: act,
@@ -330,11 +363,73 @@ export class CursorVoiceSession {
     }
   }
 
+  getMicUiState(): MicUiState {
+    return {
+      userMuted: this.userMuted,
+      micEnabled: !this.isMuted,
+      agentSpeaking: this.agentSpeaking,
+    };
+  }
+
+  /** User mute toggle. Unmuting while the agent is speaking cancels agent audio (barge-in). */
+  setUserMuted(muted: boolean): void {
+    this.userMuted = muted;
+    if (muted) {
+      this.setMicEnabled(false);
+      return;
+    }
+    if (this.agentSpeaking) {
+      this.interruptAgentSpeech();
+      this.setMicEnabled(true);
+      return;
+    }
+    if (!this.finished) {
+      this.setMicEnabled(true);
+    }
+  }
+
+  toggleUserMute(): void {
+    if (this.isMuted) {
+      this.setUserMuted(false);
+    } else {
+      this.setUserMuted(true);
+    }
+  }
+
+  private emitMicState(): void {
+    this.callbacks.onMicState?.(this.getMicUiState());
+  }
+
+  private interruptAgentSpeech(): void {
+    if (this.dc?.readyState === "open") {
+      this.sendEvent({ type: "response.cancel" });
+      this.sendEvent({ type: "output_audio_buffer.clear" });
+    }
+    this.agentSpeaking = false;
+    this.hasActiveResponse = false;
+    this.queuedResponseCreate = false;
+  }
+
+  private duckMicForAgent(): void {
+    if (this.userMuted) {
+      return;
+    }
+    this.setMicEnabled(false);
+  }
+
+  private restoreMicAfterAgent(): void {
+    if (this.userMuted || this.finished) {
+      return;
+    }
+    this.setMicEnabled(true);
+  }
+
   private setMicEnabled(enabled: boolean): void {
     this.mediaStream?.getAudioTracks().forEach((t) => {
       t.enabled = enabled;
     });
     this.isMuted = !enabled;
+    this.emitMicState();
   }
 
   private async connectWebRtc(ephemeralKey: string): Promise<void> {
@@ -433,19 +528,23 @@ export class CursorVoiceSession {
         await this.handleTool(norm.name, norm.args, norm.callId);
       }
     }
+    if (type === "response.created") {
+      this.duckMicForAgent();
+    }
     if (type === "output_audio_buffer.started") {
-      if (!this.userMuted) {
-        this.setMicEnabled(false);
-      }
+      this.agentSpeaking = true;
+      this.emitMicState();
+      this.duckMicForAgent();
     }
     if (type === "output_audio_buffer.stopped") {
+      this.agentSpeaking = false;
+      this.emitMicState();
       setTimeout(() => {
-        if (!this.userMuted && !this.finished) {
-          this.setMicEnabled(true);
-        }
+        this.restoreMicAfterAgent();
       }, ECHO_RESTORE_MS);
     }
     if (type === "response.audio_transcript.delta" || type === "response.output_audio_transcript.delta") {
+      this.duckMicForAgent();
       const delta = event.delta;
       if (typeof delta === "string") {
         this.assistantPartial += delta;
@@ -504,6 +603,15 @@ export class CursorVoiceSession {
           spoken_summary:
             (typeof args.spoken_summary === "string" && args.spoken_summary) ||
             "Sent your instruction to Cursor.",
+        };
+      } else if (name === "cursor_voice_focus_thread") {
+        const threadId = String(args.thread_id || "").trim();
+        const result = await bridgeFocusThread(this.bridge, threadId);
+        output = {
+          success: true,
+          result,
+          spoken_summary:
+            (typeof args.spoken_summary === "string" && args.spoken_summary) || "Switched Agent chat.",
         };
       } else if (name === "cursor_voice_wait_for_agent") {
         const timeout = typeof args.timeout_sec === "number" ? args.timeout_sec : 60;

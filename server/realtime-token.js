@@ -13,11 +13,18 @@ const CURSOR_VOICE_TOOLS = [
     description:
       "Send a new instruction to the user's Cursor IDE Agent chat. " +
       'Call cursor_voice_get_status first when unsure if a run is active. ' +
-      'Keep spoken_summary short (one sentence).',
+      'The text field must be written FOR the Cursor Agent to read — not a description of what to send. ' +
+      'Keep spoken_summary short (one sentence to the user).',
     parameters: {
       type: 'object',
       properties: {
-        text: { type: 'string', description: 'Full instruction for the IDE agent.' },
+        text: {
+          type: 'string',
+          description:
+            'Message body posted as the user in Agent chat. Write in first person/imperative as if the user typed it. ' +
+            'Never meta-phrases like "say hello to the agent", "tell the agent to", or "ask it to". ' +
+            'Bad: "Say hello and ask the agent to check logs." Good: "Hello — please check production logs and confirm the server is stable since the last deploy."',
+        },
         thread_id: {
           type: 'string',
           description:
@@ -71,6 +78,21 @@ const CURSOR_VOICE_TOOLS = [
   },
   {
     type: 'function',
+    name: 'cursor_voice_focus_thread',
+    description:
+      'Focus an Agent chat tab in Cursor by thread id from get_status.threads. Use when the user wants to switch chats before sending.',
+    parameters: {
+      type: 'object',
+      properties: {
+        thread_id: { type: 'string', description: 'Composer id from get_status.threads[].id' },
+        spoken_summary: { type: 'string', description: 'Short line to say after focus succeeds.' },
+      },
+      required: ['thread_id', 'spoken_summary'],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: 'function',
     name: 'cursor_voice_get_status',
     description:
       'Read bridge status, agent_activity (last agent reply preview from hooks), and thread list. ' +
@@ -88,15 +110,16 @@ const CURSOR_VOICE_TOOLS = [
 function buildInstructions() {
   return [
     'You are a voice copilot for Cursor IDE. You control the IDE by calling tools only — you cannot see the screen.',
-    'To send work: cursor_voice_get_status, then cursor_voice_submit_instruction with the full instruction text.',
-    'When the user asks what the Agent did, said, or whether a turn finished: call cursor_voice_get_status and read agent_activity. If user is waiting after you submitted work, call cursor_voice_wait_for_agent (60s) then summarize last_agent_message_preview.',
+    'To send work: cursor_voice_get_status, then cursor_voice_submit_instruction. Rewrite the user request into a clear Agent message in text — direct wording the Agent should execute, not narration about sending.',
+    'When the user asks what the Agent did, said, or whether a turn finished: call cursor_voice_get_status and read status.agent_activity (last_agent_message_preview, agent_running). If user is waiting after you submitted work, call cursor_voice_wait_for_agent (60s) then summarize last_agent_message_preview.',
+    'Example: user says "tell the agent to run tests" → text: "Run the test suite and summarize failures." Not: "Tell the agent to run tests."',
     'When [AGENT_COMPLETE] arrives, speak the agent result to the user — do not say still working.',
     'Lines tagged [AGENT_UPDATE] are hook-fed agent text — ground truth for recent output.',
     'Do not say "connection issue" when get_status or submit returns success:true.',
     'Never tell the user an instruction was sent until cursor_voice_submit_instruction returns success:true. If success:false, say the send failed (read error) and suggest reloading the Cursor window — do not say you are waiting for the agent.',
     'Extension bridge (transport extension-composer) is normal — no desktop CLI required.',
     'Keep spoken replies under two sentences. Never invent thread_id.',
-    'Voice submit posts into the Cursor Agent (Composer) panel — not email or a hidden thread. After submit, tell the user to look at Agent in Cursor. Use get_status.threads and focused_composer_id to explain which composer id was targeted.',
+    'Voice submit posts into the Cursor Agent (Composer) panel. For thread list: call get_status and read threads[] — each has title, id, focused. Speak titles to the user; never invent titles. To switch tabs: cursor_voice_focus_thread(thread_id) then submit. Do not give therapy or generic support unless the user asks for emotional help — route coding/agent requests to tools.',
     'Never claim a message was delivered to a "thread" the user cannot see. If submit method was a dev test command or user disputes delivery, say to check the Agent panel and offer to resubmit with an explicit thread_id from get_status.',
   ].join('\n\n');
 }

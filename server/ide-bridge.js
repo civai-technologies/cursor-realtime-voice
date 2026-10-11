@@ -1,15 +1,15 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const { listDesktopThreads, sendDesktopMessage } = require('./desktop-cli');
 const {
   extensionConfigured,
   extensionAvailable,
   extensionReachable,
   extensionGetStatus,
   extensionInstruct,
-  extensionRestartBridge,
+  extensionFocusThread,
   extensionCancel,
+  extensionProbe,
   startExtensionEventRelay,
 } = require('./extension-proxy');
 
@@ -21,7 +21,7 @@ const state = {
   lastThreadTitle: null,
   lastEventAt: null,
   sseClients: new Set(),
-  transport: 'unknown',
+  transport: 'extension-composer',
   lastAgentMessage: null,
   lastAgentMessageAt: null,
   lastTurnFinishedAt: null,
@@ -66,13 +66,35 @@ function readBridgeConfigJson() {
   });
 }
 
+function isLikelyVoiceOrServerEcho(text) {
+  const t = String(text || '');
+  return (
+    /127\.0\.0\.1:8787|cursor-voice-server|Start voice|Open that address in your browser/i.test(t) ||
+    /cursor_voice_|voice copilot for Cursor IDE/i.test(t)
+  );
+}
+
 function recordAgentActivity(event) {
-  if (event.kind === 'assistant_chunk' && event.detail) {
+  if (
+    event.kind === 'assistant_chunk' &&
+    event.detail &&
+    !/instruction sent/i.test(event.summary || '') &&
+    !isLikelyVoiceOrServerEcho(event.detail)
+  ) {
     state.lastAgentMessage = String(event.detail).slice(0, 12000);
     state.lastAgentMessageAt = event.ts;
-  } else if (event.kind === 'assistant_chunk' && event.summary && !event.tool_name) {
+  } else if (
+    event.kind === 'assistant_chunk' &&
+    event.summary &&
+    !event.tool_name &&
+    !/instruction sent/i.test(event.summary) &&
+    !isLikelyVoiceOrServerEcho(event.summary)
+  ) {
     state.lastAgentMessage = String(event.summary).slice(0, 12000);
     state.lastAgentMessageAt = event.ts;
+  }
+  if (event.kind === 'instruct_sent') {
+    state.running = true;
   }
   if (event.kind === 'run_done') {
     state.lastTurnFinishedAt = event.ts;
@@ -84,9 +106,26 @@ function recordAgentActivity(event) {
   if (event.kind === 'run_cancelled') {
     state.running = false;
   }
-  if (event.kind === 'session_start') {
-    state.running = true;
-  }
+}
+
+function mergeAgentActivity(serverAct, extAct) {
+  const pick = (key) => {
+    const s = serverAct[key];
+    const e = extAct[key];
+    if (s == null || s === '') return e ?? s;
+    if (e == null || e === '') return s;
+    if (key.endsWith('_at')) {
+      return String(s) >= String(e) ? s : e;
+    }
+    return s;
+  };
+  return {
+    last_agent_message_preview: pick('last_agent_message_preview'),
+    last_agent_message: pick('last_agent_message'),
+    last_agent_message_at: pick('last_agent_message_at'),
+    last_turn_finished_at: pick('last_turn_finished_at'),
+    agent_running: Boolean(serverAct.agent_running || extAct.agent_running),
+  };
 }
 
 function agentActivityPayload() {
@@ -96,9 +135,7 @@ function agentActivityPayload() {
     : null;
   return {
     last_agent_message_preview: preview,
-    last_agent_message: state.lastAgentMessage
-      ? state.lastAgentMessage.slice(0, 4000)
-      : null,
+    last_agent_message: state.lastAgentMessage ? state.lastAgentMessage.slice(0, 4000) : null,
     last_agent_message_at: state.lastAgentMessageAt,
     last_turn_finished_at: state.lastTurnFinishedAt,
     agent_running: state.running,
@@ -132,103 +169,70 @@ function ensureExtensionRelay() {
   });
 }
 
+async function extensionUnreachableResponse() {
+  const probe = await extensionProbe();
+  return {
+    error: 'extension_bridge_unreachable',
+    transport: 'extension-composer',
+    extension: probe,
+    hint:
+      'The Cursor Voice extension HTTP server is not running. In Cursor: Cmd+Shift+P → “Cursor Voice: Reload extension”, then “Cursor Voice: Restart Bridge” (you should see a modal with a new port).',
+    why:
+      probe.configured && !probe.health_ok
+        ? `Config file lists port ${probe.port} but nothing is listening (stale after extension host stop/crash). Reload the extension so it writes a fresh port to ~/.cursor/cursor-voice-extension.json.`
+        : 'Install or enable the Cursor Voice Bridge extension (./setup.sh), then open Agent in this Cursor window.',
+  };
+}
+
 async function resolveTransport() {
-  if (extensionConfigured()) {
+  ensureExtensionRelay();
+  if (!extensionConfigured()) {
     state.transport = 'extension-composer';
-    ensureExtensionRelay();
-    if (await extensionReachable()) {
-      return 'extension';
-    }
-    return 'extension-offline';
+    return 'no-extension-config';
   }
-  if (await extensionAvailable()) {
-    state.transport = 'extension-composer';
-    ensureExtensionRelay();
+  state.transport = 'extension-composer';
+  if (await extensionReachable()) {
     return 'extension';
   }
-  state.transport = 'desktop-cli';
-  return 'desktop';
+  return 'extension-offline';
 }
 
 async function getStatusPayload() {
   const transport = await resolveTransport();
-  if (transport === 'extension' || transport === 'extension-offline') {
-    const ext = transport === 'extension' ? await extensionGetStatus() : null;
+  const probe = await extensionProbe();
+  const unreachable = await extensionUnreachableResponse();
+
+  if (transport === 'extension') {
+    const ext = await extensionGetStatus();
     if (ext) {
       return {
-        running: ext.running ?? state.running,
+        running: Boolean(state.running || ext.running),
         composer_id: ext.composer_id ?? state.lastThreadId,
         thread_title: ext.thread_title ?? state.lastThreadTitle,
         last_event_at: ext.last_event_at ?? state.lastEventAt,
         threads: ext.threads || [],
+        focused_composer_id: ext.focused_composer_id ?? null,
         transport: 'extension-composer',
         extension_reachable: true,
-        agent_activity: { ...agentActivityPayload(), ...(ext.agent_activity || {}) },
-      };
-    }
-    if (transport === 'extension-offline') {
-      let threads = [];
-      let desktopFallback = false;
-      try {
-        threads = await listDesktopThreads();
-        desktopFallback = threads.length > 0;
-      } catch {
-        threads = [];
-      }
-      return {
-        running: state.running,
-        composer_id: state.lastThreadId,
-        thread_title: state.lastThreadTitle,
-        last_event_at: state.lastEventAt,
-        threads,
-        transport: desktopFallback ? 'desktop-cli-fallback' : 'extension-composer',
-        extension_reachable: false,
-        extension_config_stale: true,
-        hint: desktopFallback
-          ? 'Extension HTTP server is not running (stale port in ~/.cursor/cursor-voice-extension.json). Voice can still send via desktop bridge. Fix: Cmd+Shift+P → Cursor Voice: Reload extension.'
-          : 'Extension HTTP server is not running. Cmd+Shift+P → Cursor Voice: Reload extension, or open Agent and run ./setup.sh.',
-        agent_activity: agentActivityPayload(),
+        extension: probe,
+        agent_activity: mergeAgentActivity(agentActivityPayload(), ext.agent_activity || {}),
       };
     }
   }
-  let threads = [];
-  try {
-    threads = await listDesktopThreads();
-  } catch {
-    threads = [];
-  }
+
   return {
     running: state.running,
     composer_id: state.lastThreadId,
     thread_title: state.lastThreadTitle,
     last_event_at: state.lastEventAt,
-    threads,
-    transport: 'desktop-cli',
+    threads: [],
+    transport: 'extension-composer',
+    extension_reachable: false,
+    extension: probe,
+    hint: unreachable.hint,
+    why: unreachable.why,
     agent_activity: agentActivityPayload(),
   };
-}
-
-async function pickThread(threadId) {
-  const transport = await resolveTransport();
-  if (transport === 'extension') {
-    const ext = await extensionGetStatus();
-    const threads = ext?.threads || [{ id: 'active-composer', title: 'Active Agent chat' }];
-    let id = threadId || state.lastThreadId || threads[0]?.id;
-    const thread = threads.find((t) => t.id === id) || threads[0];
-    return { threadId: thread?.id || 'active-composer', thread, threads };
-  }
-  const threads = await listDesktopThreads();
-  if (!threads.length) return { error: 'no_agent_threads', threads };
-  let id = threadId;
-  if (!id || !threads.some((t) => t.id === id)) {
-    if (state.lastThreadId && threads.some((t) => t.id === state.lastThreadId)) {
-      id = state.lastThreadId;
-    } else {
-      id = threads[0].id;
-    }
-  }
-  const thread = threads.find((t) => t.id === id);
-  return { threadId: id, thread, threads };
 }
 
 async function handleIdeBridge(req, res, url, sendJson, readBody) {
@@ -241,7 +245,8 @@ async function handleIdeBridge(req, res, url, sendJson, readBody) {
       ok: true,
       source: 'cursor-voice-server',
       extension_composer: ext,
-      transport: ext ? 'extension-composer' : 'desktop-cli',
+      transport: 'extension-composer',
+      extension: await extensionProbe(),
     });
     return true;
   }
@@ -295,31 +300,43 @@ async function handleIdeBridge(req, res, url, sendJson, readBody) {
       return true;
     }
 
+    if (req.method === 'POST' && url.pathname === '/v1/focus') {
+      const body = JSON.parse((await readBody(req)) || '{}');
+      const threadId = String(body.thread_id || '').trim();
+      if (!threadId) {
+        sendJson(res, 400, { error: 'thread_id required' });
+        return true;
+      }
+      const transport = await resolveTransport();
+      if (transport !== 'extension') {
+        sendJson(res, 503, await extensionUnreachableResponse());
+        return true;
+      }
+      const result = await extensionFocusThread(threadId);
+      if (!result || result.status < 200 || result.status >= 300) {
+        sendJson(res, result?.status || 503, result?.body || { error: 'focus failed' });
+        return true;
+      }
+      sendJson(res, 200, result.body);
+      return true;
+    }
+
     if (req.method === 'POST' && url.pathname === '/v1/cancel') {
       const transport = await resolveTransport();
-      if (transport === 'extension-offline') {
-        sendJson(res, 503, {
-          error: 'extension_bridge_unreachable',
-          hint: 'Reload the Cursor window (Cursor Voice Bridge extension).',
-        });
+      if (transport !== 'extension') {
+        sendJson(res, 503, await extensionUnreachableResponse());
         return true;
       }
-      if (transport === 'extension') {
-        const result = await extensionCancel();
-        if (result && result.status === 200) {
-          state.running = false;
-          sendJson(res, 200, { ...result.body, transport: 'extension-composer' });
-          return true;
-        }
-      }
-      const picked = await pickThread(state.lastThreadId);
-      if (picked.error) {
-        sendJson(res, 409, picked);
+      const result = await extensionCancel();
+      if (result && result.status === 200) {
+        state.running = false;
+        sendJson(res, 200, { ...result.body, transport: 'extension-composer' });
         return true;
       }
-      await sendDesktopMessage(picked.threadId, 'Stop the current task.', { force: true });
-      state.running = false;
-      sendJson(res, 200, { cancelled: true, transport: 'desktop-cli' });
+      sendJson(res, 503, {
+        ...(await extensionUnreachableResponse()),
+        detail: result?.body || 'extension cancel failed',
+      });
       return true;
     }
 
@@ -330,61 +347,40 @@ async function handleIdeBridge(req, res, url, sendJson, readBody) {
         sendJson(res, 400, { error: 'text required' });
         return true;
       }
+
       let transport = await resolveTransport();
       if (transport === 'extension-offline') {
-        await extensionRestartBridge();
+        await new Promise((r) => setTimeout(r, 800));
         transport = await resolveTransport();
       }
-      if (transport === 'extension') {
-        const result = await extensionInstruct({
-          text,
-          thread_id: body.thread_id,
-          policy: body.policy,
-        });
-        if (result && result.status >= 200 && result.status < 300) {
-          if (result.body.thread_id) {
-            state.lastThreadId = result.body.thread_id;
-          }
-          pushEvent({
-            event_id: crypto.randomUUID(),
-            ts: new Date().toISOString(),
-            kind: 'instruct_sent',
-            composer_id: result.body.thread_id || state.lastThreadId,
-            summary: `Instruction sent (${result.body.method || 'extension'})`,
-          });
-          sendJson(res, result.status, result.body);
-          return true;
-        }
-      }
-      const force = body.policy === 'abort_then_send';
-      const picked = await pickThread(body.thread_id);
-      if (picked.error) {
-        sendJson(res, 409, {
-          error: picked.error,
-          hint: 'Install the Cursor Voice Bridge extension in Cursor, or enable desktop_bridge for CLI',
-        });
+      if (transport !== 'extension') {
+        sendJson(res, 503, await extensionUnreachableResponse());
         return true;
       }
-      const desktop = await sendDesktopMessage(picked.threadId, text, { force });
-      state.lastThreadId = picked.threadId;
-      state.lastThreadTitle = picked.thread?.title || desktop.threadTitle;
-      const usedFallback = extensionConfigured() && transport === 'extension-offline';
-      pushEvent({
-        event_id: crypto.randomUUID(),
-        ts: new Date().toISOString(),
-        kind: 'instruct_sent',
-        composer_id: picked.threadId,
-        summary: `Instruction sent (${usedFallback ? 'desktop-cli-fallback' : 'desktop-cli'})`,
+
+      const result = await extensionInstruct({
+        text,
+        thread_id: body.thread_id,
+        policy: body.policy,
       });
-      sendJson(res, 200, {
-        submitted: true,
-        thread_id: picked.threadId,
-        desktop,
-        transport: usedFallback ? 'desktop-cli-fallback' : 'desktop-cli',
-        warning: usedFallback
-          ? 'Extension HTTP bridge was down; message sent via desktop bridge. Reload extension: Cmd+Shift+P → Cursor Voice: Reload extension.'
-          : undefined,
-      });
+      if (!result) {
+        sendJson(res, 503, await extensionUnreachableResponse());
+        return true;
+      }
+      if (result.status >= 200 && result.status < 300) {
+        if (result.body.thread_id) {
+          state.lastThreadId = result.body.thread_id;
+        }
+        state.running = true;
+        pushEvent({
+          event_id: crypto.randomUUID(),
+          ts: new Date().toISOString(),
+          kind: 'instruct_sent',
+          composer_id: result.body.thread_id || state.lastThreadId,
+          summary: `Instruction sent (${result.body.method || 'extension'})`,
+        });
+      }
+      sendJson(res, result.status, result.body);
       return true;
     }
 

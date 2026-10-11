@@ -59,6 +59,18 @@ export async function bridgeInstruct(
   return data;
 }
 
+export async function bridgeFocusThread(cfg: BridgeConfig, threadId: string): Promise<Record<string, unknown>> {
+  const res = await bridgeFetch(cfg, "/v1/focus", {
+    method: "POST",
+    body: JSON.stringify({ thread_id: threadId }),
+  });
+  const data = (await res.json()) as Record<string, unknown>;
+  if (!res.ok) {
+    throw new Error(String(data.error || res.status));
+  }
+  return data;
+}
+
 export async function bridgeCancel(cfg: BridgeConfig): Promise<void> {
   const res = await bridgeFetch(cfg, "/v1/cancel", { method: "POST", body: "{}" });
   if (!res.ok) {

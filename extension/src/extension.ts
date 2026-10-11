@@ -3,9 +3,14 @@ import * as vscode from "vscode";
 import { BridgeServer } from "./bridgeServer";
 import { BridgeState } from "./bridgeState";
 import { submitComposerInstruction } from "./composerInstruct";
+import { openMacAccessibilitySettings } from "./composerSubmitMac";
+import { VoiceServerManager } from "./voiceServerManager";
 
 const state = new BridgeState();
 let bridge: BridgeServer | null = null;
+let voiceServer: VoiceServerManager | null = null;
+const BRIDGE_WATCH_MS = 20000;
+const VOICE_WATCH_MS = 30000;
 
 async function verifyBridgeHealth(port: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -36,8 +41,45 @@ async function ensureBridge(): Promise<BridgeServer> {
   return bridge;
 }
 
+/** If the HTTP server died but the extension host is still alive, bring the bridge back without a modal. */
+async function reviveBridgeIfDead(): Promise<void> {
+  if (!bridge) {
+    return;
+  }
+  const cfg = bridge.getConfig();
+  if (!cfg) {
+    return;
+  }
+  const ok = await verifyBridgeHealth(cfg.port);
+  if (ok) {
+    return;
+  }
+  try {
+    await bridge.stop();
+    bridge = new BridgeServer(state);
+    const newCfg = await bridge.start();
+    await verifyBridgeHealth(newCfg.port);
+  } catch {
+    // next watchdog tick will retry
+  }
+}
+
+async function ensureVoiceServer(): Promise<VoiceServerManager> {
+  if (!voiceServer) {
+    voiceServer = new VoiceServerManager();
+  }
+  const result = await voiceServer.ensureRunning();
+  if (result.ok) {
+    vscode.window.setStatusBarMessage(result.message, 6000);
+  }
+  return voiceServer;
+}
+
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   await ensureBridge();
+  void ensureVoiceServer().then((vs) => {
+    voiceServer = vs;
+  });
 
   context.subscriptions.push(
     vscode.commands.registerCommand("cursorVoiceBridge.showStatus", async () => {
@@ -50,24 +92,35 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     })
   );
 
+  const extVersion = context.extension.packageJSON.version ?? "?";
+
   context.subscriptions.push(
     vscode.commands.registerCommand("cursorVoiceBridge.testSubmit", async () => {
       const text =
-        (await vscode.window.showInputBox({
-          prompt: "Test instruction to send to Agent (extension path, no desktop CLI)",
-          value: "Reply with exactly: EXTENSION-BRIDGE-OK",
-        })) || "";
-      if (!text.trim()) {
-        return;
-      }
+        "CURSOR-VOICE-TEST: If you see a new user bubble in the thread below (not only text in the input box), submit works.";
       try {
-        const result = await submitComposerInstruction(text.trim());
+        const result = await submitComposerInstruction(text);
         void vscode.window.showInformationMessage(
-          `Cursor Voice: submitted via ${result.method}${result.threadId ? ` (${result.threadId})` : ""}`
+          `Cursor Voice v${extVersion}: sent via ${result.method}. Confirm a new user bubble appears below (not only text left in the input).`,
+          { modal: true }
         );
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        void vscode.window.showErrorMessage(`Cursor Voice submit failed: ${msg}`);
+        const accessibility =
+          msg.includes("1002") ||
+          msg.toLowerCase().includes("accessibility") ||
+          msg.toLowerCase().includes("simulated keys");
+        if (accessibility) {
+          void vscode.window
+            .showErrorMessage(`Cursor Voice v${extVersion}: ${msg}`, { modal: true }, "Open Accessibility Settings")
+            .then((choice) => {
+              if (choice === "Open Accessibility Settings") {
+                openMacAccessibilitySettings();
+              }
+            });
+        } else {
+          void vscode.window.showErrorMessage(`Cursor Voice v${extVersion} submit failed: ${msg}`, { modal: true });
+        }
       }
     })
   );
@@ -104,13 +157,35 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     })
   );
 
+  context.subscriptions.push(
+    vscode.commands.registerCommand("cursorVoiceBridge.openVoiceUi", async () => {
+      const vs = await ensureVoiceServer();
+      const result = await vs.ensureRunning();
+      if (!result.ok) {
+        void vscode.window.showErrorMessage(`Cursor Voice: ${result.message}`, { modal: true });
+        return;
+      }
+      await vscode.env.openExternal(vscode.Uri.parse(vs.url));
+    })
+  );
+
+  const watch = setInterval(() => {
+    void reviveBridgeIfDead();
+  }, BRIDGE_WATCH_MS);
+  const voiceWatch = setInterval(() => {
+    void ensureVoiceServer();
+  }, VOICE_WATCH_MS);
   context.subscriptions.push({
     dispose: () => {
+      clearInterval(watch);
+      clearInterval(voiceWatch);
       void bridge?.stop();
+      void voiceServer?.stop();
     },
   });
 }
 
 export function deactivate(): void {
   void bridge?.stop();
+  void voiceServer?.stop();
 }

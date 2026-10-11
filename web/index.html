@@ -36,9 +36,13 @@
       <section class="captions" id="captions" aria-live="polite"></section>
       <footer class="actions">
         <button type="button" id="startBtn">Start voice</button>
+        <button type="button" id="muteMicBtn" disabled aria-pressed="false">Mute mic</button>
         <button type="button" id="stopAgentBtn" disabled>Stop agent run</button>
         <button type="button" id="endBtn" disabled>End voice</button>
       </footer>
+      <p class="mic-hint" id="micHint" hidden>
+        Mic auto-mutes while the voice assistant speaks. Unmute to interrupt.
+      </p>
     </main>
     <script type="module" src="/src/main.ts"></script>
   </body>

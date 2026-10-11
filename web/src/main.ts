@@ -1,11 +1,13 @@
 import { loadBridgeConfig } from "./bridge-client";
-import { CursorVoiceSession, type CaptionLine } from "./cursor-voice-session";
+import { CursorVoiceSession, type CaptionLine, type MicUiState } from "./cursor-voice-session";
 
 const statusEl = document.getElementById("status")!;
 const captionsEl = document.getElementById("captions")!;
 const startBtn = document.getElementById("startBtn") as HTMLButtonElement;
 const endBtn = document.getElementById("endBtn") as HTMLButtonElement;
 const stopAgentBtn = document.getElementById("stopAgentBtn") as HTMLButtonElement;
+const muteMicBtn = document.getElementById("muteMicBtn") as HTMLButtonElement;
+const micHintEl = document.getElementById("micHint")!;
 const keyHintEl = document.getElementById("keyHint")!;
 const apiKeyInput = document.getElementById("apiKeyInput") as HTMLInputElement;
 const saveKeyBtn = document.getElementById("saveKeyBtn") as HTMLButtonElement;
@@ -32,6 +34,33 @@ function escapeHtml(s: string): string {
 
 function setStatus(text: string): void {
   statusEl.textContent = text;
+}
+
+function updateMicUi(state: MicUiState): void {
+  const { userMuted, micEnabled, agentSpeaking } = state;
+  muteMicBtn.setAttribute("aria-pressed", userMuted ? "true" : "false");
+  if (!session) {
+    muteMicBtn.disabled = true;
+    muteMicBtn.textContent = "Mute mic";
+    micHintEl.hidden = true;
+    return;
+  }
+  muteMicBtn.disabled = false;
+  if (userMuted) {
+    muteMicBtn.textContent = "Unmute mic";
+    micHintEl.hidden = false;
+    micHintEl.textContent = "Mic is muted. Unmute to talk (interrupts assistant speech if playing).";
+  } else if (agentSpeaking && !micEnabled) {
+    muteMicBtn.textContent = "Unmute mic";
+    micHintEl.hidden = false;
+    micHintEl.textContent = "Assistant speaking — mic auto-muted. Unmute to interrupt.";
+  } else {
+    muteMicBtn.textContent = "Mute mic";
+    micHintEl.hidden = !agentSpeaking;
+    if (agentSpeaking) {
+      micHintEl.textContent = "Mic auto-muted while the assistant speaks.";
+    }
+  }
 }
 
 async function loadSettings(): Promise<void> {
@@ -131,10 +160,13 @@ startBtn.addEventListener("click", () => {
         onStatus: setStatus,
         onCaptions: renderCaptions,
         onError: (m) => setStatus(`Error: ${m}`),
+        onMicState: updateMicUi,
       });
       await session.start();
       endBtn.disabled = false;
       stopAgentBtn.disabled = false;
+      muteMicBtn.disabled = false;
+      updateMicUi(session.getMicUiState());
     } catch (e) {
       setStatus(e instanceof Error ? e.message : String(e));
       startBtn.disabled = false;
@@ -148,8 +180,14 @@ endBtn.addEventListener("click", () => {
     session = null;
     endBtn.disabled = true;
     stopAgentBtn.disabled = true;
+    muteMicBtn.disabled = true;
+    updateMicUi({ userMuted: false, micEnabled: false, agentSpeaking: false });
     startBtn.disabled = false;
   })();
+});
+
+muteMicBtn.addEventListener("click", () => {
+  session?.toggleUserMute();
 });
 
 stopAgentBtn.addEventListener("click", () => {
