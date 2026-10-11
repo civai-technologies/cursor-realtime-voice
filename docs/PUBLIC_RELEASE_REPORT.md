@@ -41,6 +41,7 @@ Cursor Voice is ready for public GitHub release as a self-hosted voice front-end
 
 ## Post-publish
 
+- [x] Public repo: https://github.com/civai-technologies/cursor-voice (`main` @ initial release commit)
+- [ ] Tag `v0.1.0` (optional)
 - [ ] Enable GitHub Discussions or Issues template (optional)
-- [ ] Tag `v0.1.0` after first public push
 - [ ] Announce with demo GIF (optional)
