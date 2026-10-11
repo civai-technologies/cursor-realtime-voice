@@ -1,0 +1,47 @@
+{
+  "name": "cursor-voice-bridge",
+  "displayName": "Cursor Voice Bridge",
+  "description": "Loopback HTTP bridge: desktop send, cancel, hooks → SSE for cursor-voice",
+  "version": "0.1.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/civai-technologies/cursor-voice.git"
+  },
+  "publisher": "civai",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "cursorVoiceBridge.showStatus",
+        "title": "Cursor Voice: Show Bridge Status"
+      },
+      {
+        "command": "cursorVoiceBridge.restart",
+        "title": "Cursor Voice: Restart Bridge"
+      },
+      {
+        "command": "cursorVoiceBridge.reloadExtensionHost",
+        "title": "Cursor Voice: Reload extension (pick up updates)"
+      },
+      {
+        "command": "cursorVoiceBridge.testSubmit",
+        "title": "Cursor Voice: Test Send to Agent"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -watch -p ."
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.4.0"
+  }
+}

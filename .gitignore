@@ -1,0 +1,8 @@
+node_modules/
+extension/out/
+web/dist/
+.env
+.DS_Store
+*.log
+.cursor-voice-server.pid
+*.vsix

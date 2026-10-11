@@ -1,0 +1,32 @@
+{
+  "name": "cursor-voice",
+  "version": "0.1.0",
+  "description": "Voice control for Cursor IDE Agent using OpenAI Realtime and a local extension bridge",
+  "license": "MIT",
+  "author": "CIVAI Technologies",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/civai-technologies/cursor-voice.git"
+  },
+  "bugs": {
+    "url": "https://github.com/civai-technologies/cursor-voice/issues"
+  },
+  "homepage": "https://github.com/civai-technologies/cursor-voice#readme",
+  "keywords": [
+    "cursor",
+    "voice",
+    "openai-realtime",
+    "composer",
+    "agent",
+    "webrtc"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "postinstall": "npm install --prefix server && npm install --prefix extension && npm install --prefix web",
+    "start": "npm run compile --prefix extension && npm run build --prefix web && npm run start --prefix server",
+    "build": "npm run compile --prefix extension && npm run build --prefix web",
+    "test:realtime": "npm test --prefix server"
+  }
+}

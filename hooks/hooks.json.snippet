@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      { "command": "python3 \"HOOKS_DIR/emit_event.py\" sessionStart" }
+    ],
+    "sessionEnd": [
+      { "command": "python3 \"HOOKS_DIR/emit_event.py\" sessionEnd" }
+    ],
+    "postToolUse": [
+      { "command": "python3 \"HOOKS_DIR/emit_event.py\" postToolUse" }
+    ],
+    "stop": [
+      { "command": "python3 \"HOOKS_DIR/emit_event.py\" stop" }
+    ],
+    "afterAgentResponse": [
+      { "command": "python3 \"HOOKS_DIR/emit_event.py\" afterAgentResponse" }
+    ]
+  }
+}

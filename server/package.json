@@ -1,0 +1,14 @@
+{
+  "name": "cursor-voice-server",
+  "private": true,
+  "version": "0.1.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "bridge": "node local-bridge.js",
+    "test": "node test/realtime-token.test.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5"
+  }
+}

@@ -1,0 +1,21 @@
+# Cursor Voice Harness
+
+## Objective
+
+Voice control of Cursor IDE Agent: OpenAI Realtime (local .env) + **extension Composer bridge** (primary) + optional desktop CLI fallback + hooks progress.
+
+## Tasks
+
+- [x] Phase 0: Desktop bridge scripts (optional; blocked when Statsig `desktop_bridge` off)
+- [x] Phase 1: Extension HTTP bridge + hooks
+- [x] Phase 1b: Extension `composerInstruct` path (no desktop CLI)
+- [x] Phase 2: Local server `server/` — OpenAI `client_secrets`
+- [x] Phase 3: Web WebRTC client
+- [x] Phase 4: README, `.env.example`, `npm start`
+
+## Guardrails
+
+- No BrowserGPT / Nova gateway dependencies.
+- OPENAI_API_KEY only in `.env` on the local server.
+- Primary instruct: extension `submitComposerInstruction` → Cursor command IDs.
+- Desktop CLI fallback only when extension unavailable.

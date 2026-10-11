@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HarnessEvent",
+  "type": "object",
+  "required": ["event_id", "ts", "kind", "summary"],
+  "additionalProperties": false,
+  "properties": {
+    "event_id": { "type": "string" },
+    "ts": { "type": "string", "format": "date-time" },
+    "composer_id": { "type": "string" },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "session_start",
+        "session_end",
+        "tool_start",
+        "tool_end",
+        "assistant_chunk",
+        "run_done",
+        "run_cancelled",
+        "error"
+      ]
+    },
+    "tool_name": { "type": "string" },
+    "summary": { "type": "string" },
+    "detail": { "type": "string" }
+  }
+}
