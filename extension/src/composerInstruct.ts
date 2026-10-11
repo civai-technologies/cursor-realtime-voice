@@ -26,11 +26,26 @@ export async function listComposerThreads(): Promise<ComposerThread[]> {
   }
 
   if (ids.length === 0) {
-    // Active chat may still exist; treat focused composer as one logical thread.
     return [{ id: "active-composer", title: "Active Agent chat" }];
   }
 
   return ids.map((id) => ({ id, title: "Agent" }));
+}
+
+export async function getFocusedComposerId(): Promise<string | null> {
+  const cmds = ["composer.getFocusedComposerId", "composer.getActiveComposerId"];
+  for (const cmd of cmds) {
+    try {
+      const raw = await vscode.commands.executeCommand<unknown>(cmd);
+      if (typeof raw === "string" && raw.length > 0) {
+        return raw;
+      }
+    } catch {
+      // try next
+    }
+  }
+  const threads = await listComposerThreads();
+  return threads[0]?.id ?? null;
 }
 
 export async function focusComposer(): Promise<void> {
@@ -49,6 +64,29 @@ export async function focusComposer(): Promise<void> {
   }
 }
 
+/** Focus a specific Composer thread when Cursor exposes an open-by-id command. */
+export async function focusComposerThread(threadId?: string): Promise<string> {
+  if (threadId && threadId !== "active-composer") {
+    const openAttempts: Array<{ cmd: string; args?: unknown }> = [
+      { cmd: "composer.openComposer", args: { composerId: threadId } },
+      { cmd: "composer.openComposer", args: threadId },
+      { cmd: "composer.focusComposer", args: threadId },
+    ];
+    for (const { cmd, args } of openAttempts) {
+      try {
+        await vscode.commands.executeCommand(cmd, args);
+        await delay(200);
+        return threadId;
+      } catch {
+        // try next
+      }
+    }
+  }
+  await focusComposer();
+  await delay(120);
+  return (await getFocusedComposerId()) || threadId || "active-composer";
+}
+
 export async function cancelComposerRun(): Promise<void> {
   const cmds = [
     "composer.cancelChat",
@@ -64,14 +102,31 @@ export async function cancelComposerRun(): Promise<void> {
   }
 }
 
+async function submitViaPaste(trimmed: string): Promise<{ method: string; threadId?: string }> {
+  await vscode.env.clipboard.writeText(trimmed);
+  const pasteAttempts = ["composer.pasteText", "editor.action.clipboardPasteAction"];
+  for (const pasteCmd of pasteAttempts) {
+    try {
+      await vscode.commands.executeCommand(pasteCmd);
+      await delay(80);
+      await vscode.commands.executeCommand("composer.submit");
+      const threads = await listComposerThreads();
+      return { method: `${pasteCmd}+composer.submit`, threadId: threads[0]?.id };
+    } catch {
+      // try next paste command
+    }
+  }
+  throw new Error("paste+submit failed");
+}
+
 /**
- * Submit a full user instruction into the focused Agent / Composer chat.
- * Uses Cursor command IDs (in-process), not `cursor desktop` CLI.
+ * Submit a user instruction into the focused (or selected) Agent / Composer chat.
+ * Never uses dev-only testOpenWithPrompt (that opens a test dialog, not the real thread).
  */
 export async function submitComposerInstruction(
   text: string,
-  options?: { abortFirst?: boolean }
-): Promise<{ method: string; threadId?: string }> {
+  options?: { abortFirst?: boolean; threadId?: string }
+): Promise<{ method: string; threadId: string; warning?: string }> {
   const trimmed = text.trim();
   if (!trimmed) {
     throw new Error("Instruction text is empty");
@@ -82,12 +137,19 @@ export async function submitComposerInstruction(
     await delay(120);
   }
 
-  await focusComposer();
+  const threads = await listComposerThreads();
+  let targetId = options?.threadId;
+  if (targetId && !threads.some((t) => t.id === targetId)) {
+    targetId = undefined;
+  }
+  if (!targetId) {
+    targetId = (await getFocusedComposerId()) || threads[0]?.id || "active-composer";
+  }
+
+  const resolvedThread = await focusComposerThread(targetId);
   await delay(100);
 
   const attempts: Array<{ cmd: string; args?: unknown }> = [
-    { cmd: "workbench.action.chat.testOpenWithPrompt", args: { prompt: trimmed } },
-    { cmd: "workbench.action.chat.testOpenWithPrompt", args: trimmed },
     { cmd: "composer.startComposerPrompt2", args: { prompt: trimmed } },
     { cmd: "composer.startComposerPrompt2", args: trimmed },
     { cmd: "composer.startComposerPrompt", args: trimmed },
@@ -102,25 +164,17 @@ export async function submitComposerInstruction(
       } else {
         await vscode.commands.executeCommand(cmd, args);
       }
-      const threads = await listComposerThreads();
-      return { method: cmd, threadId: threads[0]?.id };
+      return { method: cmd, threadId: resolvedThread };
     } catch (e) {
       lastError = e;
     }
   }
 
-  await vscode.env.clipboard.writeText(trimmed);
-  const pasteAttempts = ["composer.pasteText", "editor.action.clipboardPasteAction"];
-  for (const pasteCmd of pasteAttempts) {
-    try {
-      await vscode.commands.executeCommand(pasteCmd);
-      await delay(50);
-      await vscode.commands.executeCommand("composer.submit");
-      const threads = await listComposerThreads();
-      return { method: `${pasteCmd}+composer.submit`, threadId: threads[0]?.id };
-    } catch (e) {
-      lastError = e;
-    }
+  try {
+    const pasted = await submitViaPaste(trimmed);
+    return { method: pasted.method, threadId: resolvedThread };
+  } catch (e) {
+    lastError = e;
   }
 
   const msg = lastError instanceof Error ? lastError.message : String(lastError);

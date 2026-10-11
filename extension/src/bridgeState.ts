@@ -22,7 +22,11 @@ export class BridgeState {
     if (event.composer_id) {
       this.lastThreadId = event.composer_id;
     }
-    if (event.kind === "assistant_chunk" && event.detail) {
+    if (
+      event.kind === "assistant_chunk" &&
+      event.detail &&
+      !/instruction sent/i.test(event.summary || "")
+    ) {
       this.lastAgentMessage = event.detail.slice(0, 12000);
       this.lastAgentMessageAt = event.ts;
     }

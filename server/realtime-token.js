@@ -20,7 +20,8 @@ const CURSOR_VOICE_TOOLS = [
         text: { type: 'string', description: 'Full instruction for the IDE agent.' },
         thread_id: {
           type: 'string',
-          description: 'Optional Agent thread id from status. Omit for active/first thread.',
+          description:
+            'Composer thread id from get_status.threads or focused_composer_id. Omit to use the focused Agent chat.',
         },
         policy: {
           type: 'string',
@@ -95,6 +96,8 @@ function buildInstructions() {
     'Never tell the user an instruction was sent until cursor_voice_submit_instruction returns success:true. If success:false, say the send failed (read error) and suggest reloading the Cursor window — do not say you are waiting for the agent.',
     'Extension bridge (transport extension-composer) is normal — no desktop CLI required.',
     'Keep spoken replies under two sentences. Never invent thread_id.',
+    'Voice submit posts into the Cursor Agent (Composer) panel — not email or a hidden thread. After submit, tell the user to look at Agent in Cursor. Use get_status.threads and focused_composer_id to explain which composer id was targeted.',
+    'Never claim a message was delivered to a "thread" the user cannot see. If submit method was a dev test command or user disputes delivery, say to check the Agent panel and offer to resubmit with an explicit thread_id from get_status.',
   ].join('\n\n');
 }
 

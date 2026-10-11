@@ -5,7 +5,12 @@ import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
 import { BridgeState } from "./bridgeState";
-import { cancelComposerRun, listComposerThreads, submitComposerInstruction } from "./composerInstruct";
+import {
+  cancelComposerRun,
+  getFocusedComposerId,
+  listComposerThreads,
+  submitComposerInstruction,
+} from "./composerInstruct";
 import type { HarnessEvent } from "./types";
 
 export type BridgeConfig = {
@@ -209,9 +214,11 @@ export class BridgeServer {
         } catch {
           threads = [];
         }
+        const focusedComposerId = await getFocusedComposerId();
         json(res, 200, {
           ...this.state.snapshot(),
           threads,
+          focused_composer_id: focusedComposerId,
           transport: "extension-composer",
         });
         return;
@@ -258,19 +265,14 @@ export class BridgeServer {
           json(res, 400, { error: "text required" });
           return;
         }
+        const threads = await listComposerThreads();
         const submit = await submitComposerInstruction(text, {
           abortFirst: body.policy === "abort_then_send",
+          threadId: body.thread_id,
         });
-        const threads = await listComposerThreads();
-        const threadId =
-          submit.threadId ||
-          (body.thread_id && threads.some((t) => t.id === body.thread_id)
-            ? body.thread_id
-            : threads[0]?.id) ||
-          "active-composer";
+        const threadId = submit.threadId || body.thread_id || threads[0]?.id || "active-composer";
         const thread = threads.find((t) => t.id === threadId);
         this.state.setThreadMeta(threadId, thread?.title || "Agent");
-        this.state.running = true;
         const event = newEvent({
           kind: "instruct_sent",
           composer_id: threadId,
@@ -282,6 +284,8 @@ export class BridgeServer {
           thread_id: threadId,
           transport: "extension-composer",
           method: submit.method,
+          hint:
+            "Check the Agent (Composer) panel in Cursor — voice posts a user message there, not a separate chat app.",
         });
         return;
       }

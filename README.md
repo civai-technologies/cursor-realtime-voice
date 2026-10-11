@@ -133,6 +133,8 @@ Copy [`.env.example`](.env.example) to `.env` or set the key in the web UI.
 | Symptom | What to do |
 |---------|------------|
 | `extension_bridge_unreachable` but Composer still gets the prompt | Extension was slow; update to latest (longer HTTP timeout). Run **⌘⇧P** → **Cursor Voice: Restart Bridge**. If captions show `Instruction sent`, the send worked—ignore a stale tool error. |
+| Voice says “sent to thread” but nothing in Agent | Old builds used a **test** command that opens a dialog instead of Composer—reinstall extension (`./setup.sh`). Look at the **Agent** panel in Cursor, not a separate app. |
+| `get_status` preview is your instruction text | That was a bug (instruction mistaken for agent reply)—update extension + hooks. Preview should be **agent** output from hooks. |
 | Voice says “reload Cursor” | **⌘⇧P** → **Cursor Voice: Restart Bridge** (not a menu item). |
 | `success:false` on submit + desktop CLI in the error | Install/reinstall extension via `./setup.sh`; extension path must be used when `cursor-voice-extension.json` exists. |
 | No agent completion speech | Run `./scripts/install-hooks.sh`, keep Agent chat in the same Cursor window. |
